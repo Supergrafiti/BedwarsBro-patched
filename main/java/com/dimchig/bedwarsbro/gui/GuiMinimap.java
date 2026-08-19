@@ -1,9 +1,9 @@
 package com.dimchig.bedwarsbro.gui;
 
 import java.awt.Color;
-import java.awt.geom.AffineTransform;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.Iterator;
 import java.util.List;
@@ -54,8 +54,6 @@ import net.minecraft.init.Items;
 import net.minecraft.item.EnumDyeColor;
 import net.minecraft.item.Item;
 import net.minecraft.util.BlockPos;
-import net.minecraft.util.BlockPos.MutableBlockPos;
-import net.minecraft.util.EntitySelectors;
 import net.minecraft.util.EnumFacing;
 import net.minecraft.util.ResourceLocation;
 import net.minecraft.util.Vec3;
@@ -68,6 +66,8 @@ public class GuiMinimap extends Gui {
 	
 	private static int MINIMAP_SCALING = 60; //visible range
 	private static int MINIMAP_QUALITY_MULTIPLIER = 5; //multiplies by x and scales down by x to get more quality
+	private static final int TERRAIN_CHUNK_SIZE = 11;
+	private static final int TERRAIN_GRID_SIZE = TERRAIN_CHUNK_SIZE * 16;
 	
 	private static int offset;
 	private static int topX, topY, botX, botY;
@@ -335,7 +335,7 @@ public class GuiMinimap extends Gui {
 		}
 	}
 	
-	public void drawBlockLine(WorldRenderer worldrenderer, int[][] matrix, int i1, int j1, int i2, int j2, int chunk_size, Chunk zero_chunk, Pos playerPos, double player_angle, float scaling_coef, double cos, double sin) {		 
+	public void drawBlockLine(WorldRenderer worldrenderer, int i1, int j1, int i2, int j2, int chunk_size, Chunk zero_chunk, Pos playerPos, double player_angle, float scaling_coef, double cos, double sin) {		 
 		 int chunkOffsetI1 = j1 / 16 - (chunk_size - 1)/2 - 1;
 		 int chunkOffsetI2 = j2 / 16 - (chunk_size - 1)/2 - 1;
 		 int chunkOffsetJ1 = i1 / 16 - (chunk_size - 1)/2 - 1;
@@ -353,13 +353,18 @@ public class GuiMinimap extends Gui {
 		 }
 		 
 		 //ChatSender.addText("&b" + block_x1 + ", " + block_z1 + " -> " + block_x2 + " " + block_z2);
-		 drawBlock(worldrenderer, block_x1, block_z1, block_x2 + 1, block_z2 + 1, playerPos, player_angle, scaling_coef, cos, sin);
+		 drawBlock(worldrenderer, block_x1, block_z1, block_x2 + 1, block_z2 + 1, playerPos, scaling_coef, cos, sin);
 		 
 	}
 
 	public ArrayList<Long> avg_ms = new ArrayList<Long>();
 	
 	private int strenth_potion_labels_count = 0;
+	private final byte[] terrainMask = new byte[TERRAIN_GRID_SIZE * TERRAIN_GRID_SIZE];
+	private final ArrayList<PosItem> itemPositions = new ArrayList<PosItem>();
+	private int itemPositionCount;
+	private final Pos playerPosition = new Pos(0, 0, 0);
+	private final Pos markerPosition = new Pos(0, 0, 0);
 	
 	public void draw(Minecraft mc) {
 		//initGameBeds();
@@ -377,7 +382,10 @@ public class GuiMinimap extends Gui {
 		//drawRect(topX, topY, botX, botY, color_bg);
 		
 		EntityPlayerSP player = mc.thePlayer;
-		Pos playerPos = new Pos(player.posX, player.posY, player.posZ);
+		playerPosition.x = player.posX;
+		playerPosition.y = player.posY;
+		playerPosition.z = player.posZ;
+		Pos playerPos = playerPosition;
 		float player_angle = player.rotationYaw;
 		double player_angle_radians = Math.toRadians(180 - player_angle);
 		double player_angle_cos = Math.cos(player_angle_radians);
@@ -402,23 +410,24 @@ public class GuiMinimap extends Gui {
 	    
 	    try {
 	    	
-	    	MutableBlockPos chunkPos = new MutableBlockPos();
-	    	
-	    	int chunk_size = 11; // НЕПАРНОЕ!!
+	    	int chunk_size = TERRAIN_CHUNK_SIZE; // НЕПАРНОЕ!!
 		    int n = chunk_size * 16;
-		    int[][] matrix = new int[n][n];
+		    Arrays.fill(terrainMask, (byte)0);
+		    int playerChunkX = ((int)Math.floor(player.posX)) >> 4;
+		    int playerChunkZ = ((int)Math.floor(player.posZ)) >> 4;
+		    Chunk zero_chunk = mc.theWorld.getChunkFromChunkCoords(playerChunkX, playerChunkZ);
 		    
 		   
 		    for (int i = 0; i < chunk_size; i++) {
 		    	for (int j = 0; j < chunk_size; j++) {
-			    	 Chunk chunk = mc.theWorld.getChunkFromBlockCoords(new BlockPos(player.posX + 16 * (i - (chunk_size + 1)/2), player.posY, player.posZ + 16 * (j - (chunk_size + 1)/2)));
+			    	 Chunk chunk = mc.theWorld.getChunkFromChunkCoords(zero_chunk.xPosition + i - (chunk_size + 1) / 2, zero_chunk.zPosition + j - (chunk_size + 1) / 2);
 				     int[] heights = chunk.getHeightMap();
 			    	 
 			    	 for (int x = 0; x < 16; x++) {
 					 	 for (int z = 0; z < 16; z++) {
 					 		
 							 int h = heights[x * 16 + z];
-							 if (h > 0) matrix[x + j * 16][z + i * 16] = 1;
+							 if (h > 0) terrainMask[(x + j * 16) * n + z + i * 16] = 1;
 						 }
 					 }
 			     }
@@ -432,12 +441,12 @@ public class GuiMinimap extends Gui {
 		    
 		    double angle = Math.toRadians(180 - player_angle);
 
-		    Chunk zero_chunk = mc.theWorld.getChunkFromBlockCoords(new BlockPos(player.posX, player.posY, player.posZ));
 		    for (int i = 0; i < n; i++) {
 			     for (int j = 0; j < n; j++) {
 			    	 
 			    	 
-			    	if (matrix[i][j] == 1) {
+			    	int matrixIndex = i * n + j;
+			    	if (terrainMask[matrixIndex] == 1) {
 			    		 
 				   		 int chunkOffsetI = j / 16 - (chunk_size - 1)/2 - 1;
 						 int chunkOffsetJ = i / 16 - (chunk_size - 1)/2 - 1;
@@ -452,11 +461,11 @@ public class GuiMinimap extends Gui {
 						 double screenDeltaX = (tx * player_angle_cos - tz * player_angle_sin);
 						 double screenDeltaZ = (tx * player_angle_sin + tz * player_angle_cos);
 	
-						 if (screenDeltaX  > scaling || screenDeltaX < -scaling || screenDeltaZ  > scaling || screenDeltaZ < -scaling) matrix[i][j] = 0;							 
+						 if (screenDeltaX  > scaling || screenDeltaX < -scaling || screenDeltaZ  > scaling || screenDeltaZ < -scaling) terrainMask[matrixIndex] = 0;						 
 			 
 			    	 }			    	 			    	 
 			    	 
-			    	 if (matrix[i][j] == 1) {
+			    	if (terrainMask[matrixIndex] == 1) {
 			    		 if (pi == -1 && pj == -1) {
 			    			 pi = i;
 			    			 pj = j;
@@ -464,14 +473,14 @@ public class GuiMinimap extends Gui {
 			    		 }
 			    		 
 			    		 if (j == n - 1) {
-			    			 drawBlockLine(worldrenderer, matrix, pi, pj, i, j, chunk_size, zero_chunk, playerPos, angle, scaling_coef, player_angle_cos, player_angle_sin);
+			    			 drawBlockLine(worldrenderer, pi, pj, i, j, chunk_size, zero_chunk, playerPos, angle, scaling_coef, player_angle_cos, player_angle_sin);
 			    			 pi = -1;
 			    			 pj = -1;
 			    		 }
 			    		
 			    	 } else {
 			    		 if (pi != -1 && pj != -1) {
-			    			 drawBlockLine(worldrenderer, matrix, pi, pj, i, j - 1, chunk_size, zero_chunk, playerPos, angle, scaling_coef, player_angle_cos, player_angle_sin);
+			    			 drawBlockLine(worldrenderer, pi, pj, i, j - 1, chunk_size, zero_chunk, playerPos, angle, scaling_coef, player_angle_cos, player_angle_sin);
 			    			 pi = -1;
 			    			 pj = -1;
 			    		 }
@@ -521,7 +530,7 @@ public class GuiMinimap extends Gui {
 			if (en == null || en.getName() == null|| en.getDisplayName() == null) continue;
 			if (en.getName().equals(player.getName())) continue; 
 			if (isHidePlayersOnShift == true && en.isSneaking()) continue;
-			Pos blockPos = new Pos(en.posX, en.posY, en.posZ);
+			Pos blockPos = setMarkerPosition(en.posX, en.posY, en.posZ);
 			double motionY = en.prevPosY - en.posY;
 			if (game_bed != null && en.posY < game_bed.part1_posY - 5 && motionY > 1) {
 				continue;
@@ -575,82 +584,7 @@ public class GuiMinimap extends Gui {
 			drawPoint(blockPos, playerPos, bwplayer, scaling, player_angle, en.rotationYaw, en.rotationPitch, team_color, texture_offset_x, texture_offset_y, false);
 		}
 								
-		List<EntityDragon> dragons = mc.theWorld.getEntities(EntityDragon.class, EntitySelectors.selectAnything);
-		if (dragons != null && dragons.size() > 0) {
-			for (EntityDragon dragon: dragons) {
-				Pos blockPos = new Pos(dragon.posX, dragon.posY, dragon.posZ);
-				mc.renderEngine.bindTexture(resourceLoc_enemy);
-				drawPoint(blockPos, playerPos, null, scaling, player_angle, 180 + dragon.rotationYaw, dragon.rotationPitch, TEAM_COLOR.NONE, 2, 1, false);
-				GlStateManager.pushMatrix();
-				float text_size = 0.5f;
-			    GlStateManager.scale(text_size, text_size, text_size);
-				drawTextOnMap(blockPos, playerPos, scaling, text_size, player_angle, "Dragon", getColor("ff00ffff"), 0, -9);
-				
-				String health_s = "" + (int)(dragon.getHealth() / 2) + "%";
-				drawTextOnMap(blockPos, playerPos, scaling, text_size, player_angle, health_s, getColor("ff0000ff"), 0, 5);
-				GlStateManager.popMatrix();
-			}
-		}
-		
-		List<EntityFireball> fireballs = mc.theWorld.getEntities(EntityFireball.class, EntitySelectors.selectAnything);
-		if (fireballs != null && fireballs.size() > 0) {
-			for (EntityFireball fireball: fireballs) {
-				if (fireball.posY > 300 || fireball.posY < -10) continue;
-				Pos blockPos = new Pos(fireball.posX, fireball.posY, fireball.posZ);
-				mc.renderEngine.bindTexture(resourceLoc_enemy);
-				drawTexture(blockPos, playerPos, scaling, player_angle, 0, 205, 244, 12, 12, 0.4f, 0f, 0f);
-			}
-		}
-		
-		List<EntityEnderPearl> enderpearls = mc.theWorld.getEntities(EntityEnderPearl.class, EntitySelectors.selectAnything);
-		if (enderpearls != null && enderpearls.size() > 0) {
-			for (EntityEnderPearl pearl: enderpearls) {
-				if (pearl.posY > 300 || pearl.posY < -10) continue;
-				Pos blockPos = new Pos(pearl.posX, pearl.posY, pearl.posZ);
-				mc.renderEngine.bindTexture(resourceLoc_enemy);
-				drawTexture(blockPos, playerPos, scaling, player_angle, 0, 192, 243, 13, 13, 0.4f, 0f, 0f);
-			}
-		}
-		
-		List<EntityArrow> arrows = mc.theWorld.getEntities(EntityArrow.class, EntitySelectors.selectAnything);
-		if (arrows != null && arrows.size() > 0) {
-			for (EntityArrow arrow: arrows) {
-				if (arrow.posY > 300 || arrow.posY < -10 || arrow.lastTickPosY == arrow.posY) continue;
-				Pos blockPos = new Pos(arrow.posX, arrow.posY, arrow.posZ);
-				
-				double dX = arrow.lastTickPosX - arrow.posX;
-				double dZ = arrow.lastTickPosZ - arrow.posZ;
-				float t_yaw = (float)Math.toDegrees(Math.atan2(dZ, dX)) + 90;
-				
-				mc.renderEngine.bindTexture(resourceLoc_enemy);
-				drawTexture(blockPos, playerPos, scaling, player_angle, t_yaw - player_angle - 45, 179, 243, 13, 13, 0.3f, 0f, 0f);
-			}
-		}
-		
-		List<EntityTNTPrimed> tnts = mc.theWorld.getEntities(EntityTNTPrimed.class, EntitySelectors.selectAnything);
-		if (tnts != null && tnts.size() > 0) {
-			for (EntityTNTPrimed tnt: tnts) {
-				if (tnt.posY > 300 || tnt.posY < -10) continue;
-				Pos blockPos = new Pos(tnt.posX, tnt.posY, tnt.posZ);
-					
-				mc.renderEngine.bindTexture(resourceLoc_enemy);
-				drawTexture(blockPos, playerPos, scaling, player_angle, 0, 139, 240, 16, 16, 0.3f, 0f, 0f);
-				
-				float tnt_time = tnt.fuse / 20f;
-				if (tnt_time < 0) tnt_time = 0;
-				String str = timeFormatter.format(tnt_time);
-				
-				GlStateManager.pushMatrix();
-				float text_size = 0.4f;
-			    GlStateManager.scale(text_size, text_size, text_size);
-			    
-			    float green = Math.min(tnt.fuse / 50f, 1f);
-		        Color color = new Color(1f - green, green, 0f);
-		        
-				drawTextOnMap(blockPos, playerPos, scaling, text_size, player_angle, str, color.getRGB(), 0, -8);
-				GlStateManager.popMatrix();
-			}
-		}
+		drawDynamicEntityMarkers(mc.theWorld, playerPos, scaling, player_angle);
 		
 		
 		GlStateManager.color(1f, 1f, 1f, 1f);
@@ -672,9 +606,7 @@ public class GuiMinimap extends Gui {
 		int cnt_emerald = 0;
 		int cnt_diamond = 0;
 		
-		EntityItem item_max_emerads = null;
-		EntityItem item_max_diamonds = null;
-		ArrayList<PosItem> itemsPos = new ArrayList<PosItem>();
+		itemPositionCount = 0;
 		for (Entity en: items) {
 			if (en instanceof EntityItem) {
 				EntityItem itemEntity = (EntityItem) en;
@@ -700,26 +632,43 @@ public class GuiMinimap extends Gui {
 					
 					//find similar
 					boolean isFound = false;
-					for (PosItem p: itemsPos) {
+					for (int itemIndex = 0; itemIndex < itemPositionCount; itemIndex++) {
+						PosItem p = itemPositions.get(itemIndex);
 						if (p.type != item_type) continue;
-						double dist = Math.sqrt(Math.pow(p.x - en.posX, 2) + Math.pow(p.z - en.posZ, 2)); 
-						if (dist < 3) {
+						double deltaX = p.x - en.posX;
+						double deltaZ = p.z - en.posZ;
+						if (deltaX * deltaX + deltaZ * deltaZ < 9) {
 							p.cnt += cnt;
 							isFound = true;
 							break;
 						}
 					}
-					if (!isFound) itemsPos.add(new PosItem(en.posX, en.posY, en.posZ, item_type, cnt));
+					if (!isFound) {
+						PosItem position;
+						if (itemPositionCount < itemPositions.size()) {
+							position = itemPositions.get(itemPositionCount);
+							position.x = en.posX;
+							position.y = en.posY;
+							position.z = en.posZ;
+							position.type = item_type;
+							position.cnt = cnt;
+						} else {
+							position = new PosItem(en.posX, en.posY, en.posZ, item_type, cnt);
+							itemPositions.add(position);
+						}
+						itemPositionCount++;
+					}
 				}
 			}
 		}
 		
-		for (PosItem p: itemsPos) {
+		for (int itemIndex = 0; itemIndex < itemPositionCount; itemIndex++) {
+			PosItem p = itemPositions.get(itemIndex);
 			//if (p.type == 1 && p.cnt < 4) continue;
 			if (p.type == 2 && p.cnt < 6) continue;
 			if (p.type == 3 && p.cnt < 32) continue;
 			
-			drawItemResouce(new Pos(p.x, p.y, p.z), playerPos, scaling, player_angle, p.type, p.cnt);
+			drawItemResouce(setMarkerPosition(p.x, p.y, p.z), playerPos, scaling, player_angle, p.type, p.cnt);
 		}
 		
 		GlStateManager.popMatrix();
@@ -769,6 +718,62 @@ public class GuiMinimap extends Gui {
 		
 	}
 	
+	private void drawDynamicEntityMarkers(World world, Pos playerPos, int scaling, float playerAngle) {
+		for (Entity entity : world.loadedEntityList) {
+			if (entity instanceof EntityDragon) {
+				EntityDragon dragon = (EntityDragon)entity;
+				Pos position = setMarkerPosition(dragon.posX, dragon.posY, dragon.posZ);
+				mc.renderEngine.bindTexture(resourceLoc_enemy);
+				drawPoint(position, playerPos, null, scaling, playerAngle, 180 + dragon.rotationYaw, dragon.rotationPitch, TEAM_COLOR.NONE, 2, 1, false);
+				GlStateManager.pushMatrix();
+				float textSize = 0.5f;
+				GlStateManager.scale(textSize, textSize, textSize);
+				drawTextOnMap(position, playerPos, scaling, textSize, playerAngle, "Dragon", getColor("ff00ffff"), 0, -9);
+				drawTextOnMap(position, playerPos, scaling, textSize, playerAngle, "" + (int)(dragon.getHealth() / 2) + "%", getColor("ff0000ff"), 0, 5);
+				GlStateManager.popMatrix();
+			} else if (entity instanceof EntityFireball) {
+				EntityFireball fireball = (EntityFireball)entity;
+				if (fireball.posY > 300 || fireball.posY < -10) continue;
+				mc.renderEngine.bindTexture(resourceLoc_enemy);
+				drawTexture(setMarkerPosition(fireball.posX, fireball.posY, fireball.posZ), playerPos, scaling, playerAngle, 0, 205, 244, 12, 12, 0.4f, 0f, 0f);
+			} else if (entity instanceof EntityEnderPearl) {
+				EntityEnderPearl pearl = (EntityEnderPearl)entity;
+				if (pearl.posY > 300 || pearl.posY < -10) continue;
+				mc.renderEngine.bindTexture(resourceLoc_enemy);
+				drawTexture(setMarkerPosition(pearl.posX, pearl.posY, pearl.posZ), playerPos, scaling, playerAngle, 0, 192, 243, 13, 13, 0.4f, 0f, 0f);
+			} else if (entity instanceof EntityArrow) {
+				EntityArrow arrow = (EntityArrow)entity;
+				if (arrow.posY > 300 || arrow.posY < -10 || arrow.lastTickPosY == arrow.posY) continue;
+				double deltaX = arrow.lastTickPosX - arrow.posX;
+				double deltaZ = arrow.lastTickPosZ - arrow.posZ;
+				float yaw = (float)Math.toDegrees(Math.atan2(deltaZ, deltaX)) + 90;
+				mc.renderEngine.bindTexture(resourceLoc_enemy);
+				drawTexture(setMarkerPosition(arrow.posX, arrow.posY, arrow.posZ), playerPos, scaling, playerAngle, yaw - playerAngle - 45, 179, 243, 13, 13, 0.3f, 0f, 0f);
+			} else if (entity instanceof EntityTNTPrimed) {
+				EntityTNTPrimed tnt = (EntityTNTPrimed)entity;
+				if (tnt.posY > 300 || tnt.posY < -10) continue;
+				Pos position = setMarkerPosition(tnt.posX, tnt.posY, tnt.posZ);
+				mc.renderEngine.bindTexture(resourceLoc_enemy);
+				drawTexture(position, playerPos, scaling, playerAngle, 0, 139, 240, 16, 16, 0.3f, 0f, 0f);
+				float time = Math.max(tnt.fuse / 20f, 0f);
+				GlStateManager.pushMatrix();
+				float textSize = 0.4f;
+				GlStateManager.scale(textSize, textSize, textSize);
+				float green = Math.min(tnt.fuse / 50f, 1f);
+				int color = 0xff000000 | ((int)((1f - green) * 255) << 16) | ((int)(green * 255) << 8);
+				drawTextOnMap(position, playerPos, scaling, textSize, playerAngle, timeFormatter.format(time), color, 0, -8);
+				GlStateManager.popMatrix();
+			}
+		}
+	}
+
+	private Pos setMarkerPosition(double x, double y, double z) {
+		markerPosition.x = x;
+		markerPosition.y = y;
+		markerPosition.z = z;
+		return markerPosition;
+	}
+
 	void drawItemResouce(Pos pos, Pos playerPos, int scaling, float player_angle, int item_idx, int item_count) {
 		if (item_count <= 0) return;
 		int color = getColor("ffffffff");
@@ -829,7 +834,7 @@ public class GuiMinimap extends Gui {
 		drawCenteredString(mc.fontRendererObj, text, (int)screenDeltaX, (int)screenDeltaZ, color);
 	}
 
-	private void drawBlock(WorldRenderer worldrenderer, int x1, int z1, int x2, int z2, Pos playerPos, double player_angle, float scaling_coef, double cos, double sin) {
+	private void drawBlock(WorldRenderer worldrenderer, int x1, int z1, int x2, int z2, Pos playerPos, float scaling_coef, double cos, double sin) {
 		double deltaX = x1 + (x2 - x1)/2 + ((x2 - x1) % 2) * 0.5 - playerPos.x;
 		double deltaZ = z1 + (z2 - z1)/2 - playerPos.z;
 		
@@ -869,44 +874,16 @@ public class GuiMinimap extends Gui {
 		
 	
 
-		/*topX1 = max(topX * multiplier, min(topX1, botX * multiplier));
-		topX2 = max(topX * multiplier, min(topX2, botX * multiplier));
-		topX3 = max(topX * multiplier, min(topX3, botX * multiplier));
-		topX4 = max(topX * multiplier, min(topX4, botX * multiplier));
-		topY1 = max(topY * multiplier, min(topY1, botY * multiplier));
-		topY2 = max(topY * multiplier, min(topY2, botY * multiplier));
-		topY3 = max(topY * multiplier, min(topY3, botY * multiplier));
-		topY4 = max(topY * multiplier, min(topY4, botY * multiplier));*/
-		
-		/* Previous method
-		double[] pt = {topX1, topY1, topX2, topY2, topX3, topY3, topX4, topY4};
-		AffineTransform.getRotateInstance(player_angle, screenDeltaX, screenDeltaZ).transform(pt, 0, pt, 0, 4); // specifying to use this double[] to hold coords
-		topX1 = pt[0];
-		topY1 = pt[1];
-		topX2 = pt[2];
-		topY2 = pt[3];
-		topX3 = pt[4];
-		topY3 = pt[5];
-		topX4 = pt[6];
-		topY4 = pt[7];*/
-		
-		
-		//AI ChatGPT generated method
-		double[][] rotatedPoints = rotatePoints(new double[][] {
-			{topX1, topY1},
-			{topX2, topY2},
-			{topX3, topY3},
-			{topX4, topY4}			
-			}, screenDeltaX, screenDeltaZ, cos, sin);
-		
-		topX1 = rotatedPoints[0][0];
-		topY1 = rotatedPoints[0][1];
-		topX2 = rotatedPoints[1][0];
-		topY2 = rotatedPoints[1][1];
-		topX3 = rotatedPoints[2][0];
-		topY3 = rotatedPoints[2][1];
-		topX4 = rotatedPoints[3][0];
-		topY4 = rotatedPoints[3][1];
+		double halfWidth = w / 2;
+		double halfHeight = h / 2;
+		topX1 = screenDeltaX - halfWidth * cos + halfHeight * sin;
+		topY1 = screenDeltaZ - halfWidth * sin - halfHeight * cos;
+		topX2 = screenDeltaX - halfWidth * cos - halfHeight * sin;
+		topY2 = screenDeltaZ - halfWidth * sin + halfHeight * cos;
+		topX3 = screenDeltaX + halfWidth * cos - halfHeight * sin;
+		topY3 = screenDeltaZ + halfWidth * sin + halfHeight * cos;
+		topX4 = screenDeltaX + halfWidth * cos + halfHeight * sin;
+		topY4 = screenDeltaZ + halfWidth * sin - halfHeight * cos;
 		
 		//ChatSender.addText(minimapX2);
 //		topX1 = Math.max(minimapX1, Math.min(minimapX2, topX1));
@@ -932,23 +909,6 @@ public class GuiMinimap extends Gui {
 		//drawRect(0, 0, 10, 10, 0);
 	}
 	
-	public static double[][] rotatePoints(double[][] points, double pivotX, double pivotY, double cos, double sin) {
-	    double[][] rotatedPoints = new double[points.length][2];
-
-	    for (int i = 0; i < points.length; i++) {
-	        double x = points[i][0] - pivotX;
-	        double y = points[i][1] - pivotY;
-
-	        double newX = x * cos - y * sin;
-	        double newY = x * sin + y * cos;
-
-	        rotatedPoints[i][0] = newX + pivotX;
-	        rotatedPoints[i][1] = newY + pivotY;
-	    }
-
-	    return rotatedPoints;
-	}
-
 	private void drawPoint(Pos pos, Pos playerPos, BWPlayer bwplayer, int scaling, float player_angle, float enemy_angle, float enemy_pitch, TEAM_COLOR team_color, int texture_offset_x, int texture_offset_y, boolean isMainPlayer) {
 
 		if (isMainPlayer) {

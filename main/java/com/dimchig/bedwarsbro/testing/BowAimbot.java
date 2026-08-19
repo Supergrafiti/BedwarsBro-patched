@@ -171,7 +171,7 @@ public class BowAimbot {
 				BlockPos minPos = new BlockPos(hit.pos.xCoord - collider, hit.pos.yCoord - collider, hit.pos.zCoord - collider);
 	            BlockPos maxPos = new BlockPos(hit.pos.xCoord + collider, hit.pos.yCoord + collider, hit.pos.zCoord + collider);
 	            AxisAlignedBB box = new AxisAlignedBB(minPos, maxPos);
-	            List<EntityPlayer> vs = mc.theWorld.getEntitiesWithinAABB((Class)EntityPlayer.class, box);
+	            List<EntityPlayer> vs = mc.theWorld.getEntitiesWithinAABB(EntityPlayer.class, box);
 	            if (vs == null || vs.size() == 0) return;
 	            EntityPlayer villager = vs.get(0);
 	            if (villager == null) return;

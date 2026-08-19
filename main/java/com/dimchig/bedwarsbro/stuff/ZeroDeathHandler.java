@@ -194,7 +194,7 @@ public class ZeroDeathHandler {
 		BlockPos minPos = new BlockPos(mc.thePlayer.posX - nearby_projectile_radius, mc.thePlayer.posY - nearby_projectile_radius, mc.thePlayer.posZ - nearby_projectile_radius);
 		BlockPos maxPos = new BlockPos(mc.thePlayer.posX + nearby_projectile_radius, mc.thePlayer.posY + nearby_projectile_radius, mc.thePlayer.posZ + nearby_projectile_radius);        
         AxisAlignedBB box = new AxisAlignedBB(minPos, maxPos);
-        List<EntityArrow> arr_arrows = mc.theWorld.getEntitiesWithinAABB((Class)EntityArrow.class, box);
+        List<EntityArrow> arr_arrows = mc.theWorld.getEntitiesWithinAABB(EntityArrow.class, box);
         if (arr_arrows != null && arr_arrows.size() > 0) {
         	for (EntityArrow en: arr_arrows) { 
         		Entity sender = en.shootingEntity;
@@ -246,6 +246,7 @@ public class ZeroDeathHandler {
 		long t = new Date().getTime();
 		if (t - last_time_rejoin < MIN_TIME_INTERVAL) return;
 		last_time_rejoin = t;
+		Main.chatListener.markRejoinIntent();
 		ChatSender.sendText("/leave");
 		Main.myTickEvent.zeroDeathHandlerRejoinVar = 10;
 		

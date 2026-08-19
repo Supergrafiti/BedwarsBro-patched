@@ -22,12 +22,10 @@ import net.minecraft.util.ResourceLocation;
 import net.minecraftforge.client.event.RenderGameOverlayEvent;
 import net.minecraftforge.common.config.ConfigCategory;
 import net.minecraftforge.common.config.Property;
-import net.minecraftforge.fml.client.event.ConfigChangedEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 
-import java.awt.*;
-import java.lang.reflect.Field;
+import java.awt.Color;
 import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -51,8 +49,6 @@ public class GuiOnScreen extends Gui {
 	
 	private Main asInstance;
     private Minecraft mc;
-    private Field renderEventTypeField;
-    private Field configChangedEventModIDField;
     private final DecimalFormat timeFormatter = new DecimalFormat("0.0");
 	
     private MyItem item_diamond;
@@ -121,16 +117,6 @@ public class GuiOnScreen extends Gui {
         
         keyTab = mc.gameSettings.keyBindPlayerList;
         
-        try {
-            //Ugly workaround to get minecraft 1.8 to work with the same jar
-            renderEventTypeField = RenderGameOverlayEvent.class.getDeclaredField("type");
-            renderEventTypeField.setAccessible(true);
-
-            configChangedEventModIDField = ConfigChangedEvent.class.getDeclaredField("modID");
-            configChangedEventModIDField.setAccessible(true);
-        } catch (NoSuchFieldException e) {
-            throw new RuntimeException("Cannot find field", e);
-        }
     }
 	
 	public void updateBooleans() {
@@ -141,9 +127,9 @@ public class GuiOnScreen extends Gui {
 	
 	long lastPlaySoundTime = 0;
 	@SubscribeEvent
-    public void onRender(RenderGameOverlayEvent event) throws IllegalAccessException {
+    public void onRender(RenderGameOverlayEvent event) {
 		boolean isF3 = mc.gameSettings.showDebugInfo;
-        if(renderEventTypeField.get(event) == RenderGameOverlayEvent.ElementType.TEXT) {
+        if(event.type == RenderGameOverlayEvent.ElementType.TEXT) {
         	ScaledResolution sr = new ScaledResolution(mc);
             int screen_width = sr.getScaledWidth();
             int screen_height = sr.getScaledHeight(); 

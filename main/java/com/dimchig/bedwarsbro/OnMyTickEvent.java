@@ -12,6 +12,7 @@ import com.dimchig.bedwarsbro.particles.ParticleTrail;
 import com.dimchig.bedwarsbro.stuff.BWItem;
 import com.dimchig.bedwarsbro.stuff.BWItemsHandler;
 import com.dimchig.bedwarsbro.stuff.HintsFinder;
+import com.dimchig.bedwarsbro.stuff.HintsBaseRadar;
 import com.dimchig.bedwarsbro.stuff.HintsItemTracker;
 import com.dimchig.bedwarsbro.stuff.HintsPlayerScanner;
 import com.dimchig.bedwarsbro.stuff.HintsValidator;
@@ -42,6 +43,8 @@ import net.minecraftforge.event.entity.living.LivingEvent;
 import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent;
 import net.minecraftforge.fml.common.gameevent.TickEvent.WorldTickEvent;
+import net.minecraftforge.fml.common.network.FMLNetworkEvent;
+import net.minecraftforge.event.world.WorldEvent;
 
 public class OnMyTickEvent {
 	
@@ -99,17 +102,40 @@ public class OnMyTickEvent {
 	private KeyBinding key_rclick;
 	
 	ArrayList<BWPlayer> scanned_players = new ArrayList<BWPlayer>();
+	private boolean hadActiveGame;
 	
 	public ArrayList<BWPlayer> getCurrentScannedPlayers() {
 		return scanned_players;
+	}
+
+	public void clearWorldState() {
+		scanned_players.clear();
+		SCANNER_FREQUENCY_CNT = 0;
+		hadActiveGame = false;
+		HintsBaseRadar.clearGameState();
+		WinEmote.reset();
+	}
+
+	@SubscribeEvent
+	public void onWorldUnload(WorldEvent.Unload event) {
+		if (event.world != null && event.world.isRemote) clearWorldState();
+	}
+
+	@SubscribeEvent
+	public void onDisconnect(FMLNetworkEvent.ClientDisconnectionFromServerEvent event) {
+		clearWorldState();
 	}
 	
 	public int zeroDeathHandlerRejoinVar = 0;
 	
 	@SubscribeEvent
 	public void playerTick(TickEvent.ClientTickEvent event){
+		if (event.phase != TickEvent.Phase.END) return;
 		if (mc == null) return; 
-		if (mc.thePlayer == null) return; 
+		if (mc.thePlayer == null) {
+			clearWorldState();
+			return;
+		}
 		
 //		if (false) {
 //			myfps.add(mc.getDebugFPS());
@@ -139,6 +165,7 @@ public class OnMyTickEvent {
 		Main.shopManager.scan(isBetterShopActive);
 		
 		if (MyChatListener.IS_IN_GAME) {
+			hadActiveGame = true;
 			SCANNER_FREQUENCY_CNT++;
 			if (SCANNER_FREQUENCY_CNT > SCANNER_FREQUENCY) {
 				SCANNER_FREQUENCY_CNT = 0;
@@ -166,6 +193,7 @@ public class OnMyTickEvent {
 			}
 						
 		} else {
+			if (hadActiveGame || !scanned_players.isEmpty()) clearWorldState();
 			
 			Main.guiOnScreen.setDiamonds(-1);
 			Main.guiOnScreen.setEmeralds(-1);
@@ -179,7 +207,6 @@ public class OnMyTickEvent {
 		if (zeroDeathHandlerRejoinVar > 0) {
 			zeroDeathHandlerRejoinVar -= 1;
 			ChatSender.sendText("/rejoin");
-			Main.chatListener.recoverGame();
 		}
 		
 		if (FIND_PLAYER_COMMAND_SEARCH.length() > 0) {
@@ -195,6 +222,7 @@ public class OnMyTickEvent {
 		
 		
 		if (isWinEmoteActive) WinEmote.handleEmote();
+		else WinEmote.reset();
 		
 		Main.freezeClutch.handle();
 		

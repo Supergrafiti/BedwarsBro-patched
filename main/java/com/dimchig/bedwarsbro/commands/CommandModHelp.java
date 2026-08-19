@@ -26,12 +26,13 @@ import net.minecraftforge.client.event.RenderGameOverlayEvent.Chat;
 
 public class CommandModHelp extends CommandBase {
 
-	public static String command_text = "/";
-	Main main_instance;
+	private final String commandText;
+	private final Main mainInstance;
 	
 	public CommandModHelp(Main main, String command) {
-		main_instance = main;
-		this.command_text = command.replace("/", "");
+		mainInstance = main;
+		String normalized = command == null ? "" : command.replace("/", "").trim();
+		commandText = normalized.isEmpty() ? "bwbro" : normalized;
 	}
 	
 	@Override
@@ -41,7 +42,7 @@ public class CommandModHelp extends CommandBase {
 
 	@Override
 	public String getCommandName() {
-		return this.command_text;
+		return commandText;
 	}
 	
 	@Override

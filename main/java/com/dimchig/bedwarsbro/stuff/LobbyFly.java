@@ -21,6 +21,7 @@ public class LobbyFly {
 	
 	@SubscribeEvent
 	public void playerTick(TickEvent.ClientTickEvent event){
+		if (event.phase != TickEvent.Phase.END || mc == null || mc.thePlayer == null) return;
 		if (isActive) {
 			if (speed > 1f) speed = (float) Math.floor(speed);
 			double yaw = mc.thePlayer.rotationYaw;

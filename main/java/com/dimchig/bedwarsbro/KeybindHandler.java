@@ -5,8 +5,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Random;
-import java.util.Timer;
-import java.util.TimerTask;
 
 import org.lwjgl.input.Keyboard;
 
@@ -102,6 +100,10 @@ public class KeybindHandler {
     }
     
     void readKeys() {
+		readKeys(true);
+	}
+
+	private void readKeys(boolean resetInvalidFile) {
     	String readFile = FileManager.readFile(filename);
 		if (readFile == null || readFile.length() < 3) {
 			initKeys();
@@ -117,6 +119,7 @@ public class KeybindHandler {
     	
     	try {
     		String[] keys = readFile.split(";");
+			if (keys.length < 15) throw new IllegalArgumentException("Expected 15 key bindings, found " + keys.length);
     		int key1 = Integer.parseInt(keys[0]);
     		int key2 = Integer.parseInt(keys[1]);
     		int key3 = Integer.parseInt(keys[2]);
@@ -175,7 +178,13 @@ public class KeybindHandler {
 	        keyTab = mc.gameSettings.keyBindPlayerList;
 	        System.out.println("SUCCESFULLY REGISTERED");
     	} catch (Exception ex) {
-    		ex.printStackTrace();
+			if (resetInvalidFile) {
+				System.err.println("BedwarsBro: invalid key binding file, restoring defaults: " + ex.getMessage());
+				initKeys();
+				readKeys(false);
+			} else {
+				ex.printStackTrace();
+			}
     	}
     }
     
@@ -189,13 +198,13 @@ public class KeybindHandler {
     	s += Keyboard.KEY_NUMPAD9 + ";";
     	s += Keyboard.KEY_GRAVE + ";";
     	s += Keyboard.KEY_NONE + ";";
+    	s += Keyboard.KEY_NONE + ";";
     	s += Keyboard.KEY_B + ";";
     	s += Keyboard.KEY_F + ";";
     	s += Keyboard.KEY_L + ";";
-    	s += Keyboard.KEY_K + ";";    	
-    	s += Keyboard.KEY_NONE + ";";
-    	s += Keyboard.KEY_NONE + ";";
-    	s += Keyboard.KEY_NONE + ";";
+	    	s += Keyboard.KEY_K + ";";    	
+	    	s += Keyboard.KEY_NONE + ";";
+	    	s += Keyboard.KEY_NONE + ";";
 
     	FileManager.writeToFile(s, filename, false);
     }
@@ -219,7 +228,9 @@ public class KeybindHandler {
 	    	s += keyShowLastLightning.getKeyCode() + ";";
 	    	s += keySpawnFakeFireball.getKeyCode() + ";";
 	    	FileManager.writeToFile(s, filename, false);
-    	} catch (Exception ex) {}
+	    	} catch (Exception ex) {
+	    		ex.printStackTrace();
+	    	}
     }
     
     @SubscribeEvent
@@ -334,8 +345,8 @@ public class KeybindHandler {
         if (keyLookAtMyBase.isPressed()) {
         	Main.playerFocus.isLookAtBaseActive = true;
         	if (Main.chatListener.GAME_BED == null) ChatSender.addText("&cНет кровати 0_o");
-        } else if (!keyLobbyFly.isKeyDown()) {
-        	Main.playerFocus.isLookAtBaseActive = false;
+        } else if (!keyLookAtMyBase.isKeyDown()) {
+			Main.playerFocus.isLookAtBaseActive = false;
         }
         
         if (keyFreezeCluth.isPressed()) {

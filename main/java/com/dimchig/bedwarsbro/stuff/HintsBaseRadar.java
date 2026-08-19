@@ -61,13 +61,16 @@ public class HintsBaseRadar {
 	}
 	
 	public static class RadarAlert {
-		
-		public BWPlayer player; 
+		public String playerName;
+		public TEAM_COLOR playerTeamColor;
+		public double playerDistance;
 		public int range_id; 
 		public double posY; 
 		public long time;
 		public RadarAlert(BWPlayer player, double posY, int range_id) {
-			this.player = player;
+			this.playerName = player.name;
+			this.playerTeamColor = player.team_color;
+			this.playerDistance = player.distToPlayer;
 			this.range_id = range_id;
 			this.posY = posY;
 			this.time = new Date().getTime();
@@ -76,6 +79,19 @@ public class HintsBaseRadar {
 		public long getTimePassed() {
 			return new Date().getTime() - this.time;
 		}
+	}
+
+	public static void clearGameState() {
+		if (alerts != null) alerts.clear();
+		alerts = null;
+		if (game_bw_teams != null) game_bw_teams.clear();
+		game_bw_teams = null;
+		basePosX = -9999;
+		basePosY = -9999;
+		basePosZ = -9999;
+		mod_team_color = TEAM_COLOR.NONE;
+		GAME_isBedBroken = false;
+		time_last_message_sent_for_team = 0;
 	}
 	
 	public static void recognizeTeamColor() {
@@ -102,7 +118,7 @@ public class HintsBaseRadar {
 	}
 	
 	public static void scan(ArrayList<BWPlayer> players, boolean isRadarBaseActive, boolean isPlayerRadarActive) {
-		if (basePosX == -99999 || alerts == null) return;
+		if (basePosX == -9999 || alerts == null) return;
 		
 		
 		boolean isBedAlert = true;
@@ -129,7 +145,7 @@ public class HintsBaseRadar {
 			
 			//count if 2 or more players rushing us
 			for (RadarAlert alert: alerts) {
-				if (alert.player.team_color == player.team_color && player.distToPlayer <= alert.player.distToPlayer && !player.name.equals(alert.player.name)) {
+				if (alert.playerTeamColor == player.team_color && player.distToPlayer <= alert.playerDistance && !player.name.equals(alert.playerName)) {
 					player_cnt++;
 				}
 			}
@@ -172,11 +188,11 @@ public class HintsBaseRadar {
 			RadarAlert alert = alerts.get(i);
 			
 			if (alert.getTimePassed() > RADAR_TIME_TRESHOLD) {
-				alerts.remove(alert);
-				i = 0;
+				alerts.remove(i);
+				i--;
 				continue;
 			} 
-			if (alert.player.name.equals(player.name)) {
+			if (alert.playerName.equals(player.name)) {
 				if (alert.range_id <= range_id) return;	
 				alerts.remove(alert);
 				i--;

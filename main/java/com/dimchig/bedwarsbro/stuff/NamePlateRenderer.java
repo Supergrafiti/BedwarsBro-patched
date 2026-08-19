@@ -113,7 +113,6 @@ public class NamePlateRenderer {
 	
 	public void printSameUsersInGame() {
 		if (mc == null || mc.thePlayer == null) return;
-		if (Main.getPropAuthorPrefix().equals("none")) return;
 		if (mc.getNetHandler() == null || mc.getNetHandler().getPlayerInfoMap() == null) return;
 		Collection<NetworkPlayerInfo> players = mc.getNetHandler().getPlayerInfoMap();
 		if (players == null || players.size() == 0) return;
@@ -122,6 +121,7 @@ public class NamePlateRenderer {
 		
 		int cnt = 0;
 		ArrayList<String> arr = new ArrayList<String>();
+		String creatorRole = "";
 		for (NetworkPlayerInfo info: players) { 
     		if (info.getGameProfile() == null || info.getPlayerTeam() == null) continue;
     		
@@ -141,16 +141,17 @@ public class NamePlateRenderer {
 			
 			cnt++;
 			arr.add(color_code + ColorCodesManager.removeColorCodes(player_name));
-    	}
+			if (creatorRole.length() == 0) creatorRole = Main.isPropPatchAuthor(player_name) ? "создатель патча" : "создатель мода";
+		}
 		
 		if (cnt <= 0 || arr.size() == 0) return;
-    	String text = MyChatListener.PREFIX_BEDWARSBRO + "С тобой в катке играет &aDimChig &fпод ником \"" + arr.get(0) + "&f\"! Это автор и создатель мода &r&cBedwars&fBro!";
+	    	String text = MyChatListener.PREFIX_BEDWARSBRO + "С тобой в катке играет &a" + creatorRole + " &fпод ником \"" + arr.get(0) + "&f\"!";
     	ChatSender.addText(text);
 	}
 	
 	public String getPrefixByName(String player_name) {
-		if (!Main.isPropUserAdmin(player_name)) return "";
-		//return "&c&l[&6&lA&e&lD&a&lM&b&lI&d&lN&c&l]&r ";
+		if (Main.isPropPatchAuthor(player_name)) return Main.getPropPatchAuthorPrefix();
+		if (!Main.isPropModAuthor(player_name)) return "";
 		String prefix = Main.getPropAuthorPrefix();
 		if (prefix.equals("none")) return "";
 		if (prefix == null || prefix.length() == 0) return "&c&l[&6&lС&e&lо&a&lз&b&lд&d&lа&c&lт&6&lе&e&lл&a&lь&c&l]&r ";

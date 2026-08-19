@@ -18,10 +18,17 @@ import net.minecraftforge.common.config.Configuration;
 
 public class CommandRainbowMessage extends CommandBase {
 
-	public static String command_text = "r";
+	private String command_text = "r";
 	
 	public CommandRainbowMessage(String command) {
-		this.command_text = command.replace("/", "");
+		setCommandText(command);
+	}
+
+	public void setCommandText(String command) {
+		String normalized = command == null ? "" : command.replace("/", "").trim();
+		int whitespace = normalized.indexOf(' ');
+		if (whitespace >= 0) normalized = normalized.substring(0, whitespace);
+		this.command_text = normalized.isEmpty() ? "r" : normalized;
 	}
 	
 	@Override

@@ -111,7 +111,7 @@ public class BedwarsMeow {
 					replace_edited = "синих";
 					replace_normal_single = "синий";
 					replace_edited_single = "синего";
-				} else if (team_color == team_color.PINK) {
+				} else if (team_color == TEAM_COLOR.PINK) {
 					replace_normal = "розовые";
 					replace_edited = "розовых";
 					replace_normal_single = "розовый";
@@ -160,6 +160,7 @@ public class BedwarsMeow {
 	}
 	
 	public String upperCaseFirstLetter(String text) {
+		if (text == null || text.isEmpty()) return text;
 		return text.substring(0, 1).toUpperCase() + text.substring(1);
 	}
 	
@@ -194,7 +195,7 @@ public class BedwarsMeow {
 		
 		
 		if (readFile == null) {
-			ChatSender.addText(prefix + "&cФайл с текстом не найден! Проверь &e%appdata%\\Roaming\\.minecraft\\" + filename);
+			ChatSender.addText(prefix + "&cФайл с текстом не найден! Проверь &e" + FileManager.getFile(filename).getAbsolutePath());
 			return;
 		}
 		
@@ -210,7 +211,7 @@ public class BedwarsMeow {
 			};
 			
 			//check
-			for (int i = 0; i < splitters_cases.length - 1; i++) {
+			for (int i = 0; i < splitters_cases.length; i++) {
 				if (!readFile.contains(splitters_text[i])) {
 					ChatSender.addText("\n" + Main.chatListener.PREFIX_BEDWARS_MEOW + "&c&lОшибка файла, категории отсутствуют! Восстанови файл к &lзаводским настройкам &7(&e/meow&7)&c!\n");
 					return;
@@ -247,7 +248,7 @@ public class BedwarsMeow {
 				}
 			}
 		} catch (Exception ex) {
-			ChatSender.addText(prefix + "&cФайл с текстом содержит ошибки! Проверь &e%appdata%\\Roaming\\.minecraft\\" + filename);
+			ChatSender.addText(prefix + "&cФайл с текстом содержит ошибки! Проверь &e" + FileManager.getFile(filename).getAbsolutePath());
 			return;
 		}
 	}
@@ -664,10 +665,12 @@ public class BedwarsMeow {
 		
 		MeowMsg msg = null;
 		if (meowMessagesQueue == null) meowMessagesQueue = new ArrayList<MeowMsg>();
-		for (MeowMsg m: meowMessagesQueue) {
+		Iterator<MeowMsg> queuedMessages = meowMessagesQueue.iterator();
+		while (queuedMessages.hasNext()) {
+			MeowMsg m = queuedMessages.next();
 			if (m.msgcase == msgcase) {
 				msg = m;
-				meowMessagesQueue.remove(m);
+				queuedMessages.remove();
 				break;
 			}
 		}

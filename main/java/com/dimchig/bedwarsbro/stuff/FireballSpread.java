@@ -14,7 +14,6 @@ import org.lwjgl.util.glu.GLU;
 import com.dimchig.bedwarsbro.ChatSender;
 import com.dimchig.bedwarsbro.Main;
 import com.dimchig.bedwarsbro.Main.CONFIG_MSG;
-import com.dimchig.bedwarsbro.stuff.TrajectoryPearl.MyPoint;
 import com.dimchig.bedwarsbro.testing.BowAimbot;
 
 import net.minecraft.block.state.IBlockState;

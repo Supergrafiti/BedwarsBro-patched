@@ -2,30 +2,15 @@ package com.dimchig.bedwarsbro.serializer;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
-import java.io.UnsupportedEncodingException;
-import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLConnection;
 import java.net.URLDecoder;
-import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
-import java.util.Base64;
-import java.util.Scanner;
-
-import com.dimchig.bedwarsbro.ChatSender;
-import com.dimchig.bedwarsbro.ColorCodesManager;
-import com.dimchig.bedwarsbro.Main;
-
-import net.minecraft.client.Minecraft;
-import net.minecraft.event.ClickEvent;
-import net.minecraft.event.HoverEvent;
-import net.minecraft.util.ChatComponentText;
-import net.minecraft.util.IChatComponent;
 
 public class MySerializer {
+	public static final int PROPS_FIELDS_WITH_SEPARATE_AUTHORS = 8;
 	
-    //public static String url_origin = "https://t.me/bedwarsbro_minecraft/2"; //круто, да?  v2.2 and less 
-    public static String url_origin = "https://t.me/bedwarsbro_minecraft/4?embed=1"; //круто, да?
+    public static String url_origin = "https://t.me/BedwarsBro_patched/2?embed=1";
     public static String url_messages = "https://t.me/bedwarsbro_minecraft/3?embed=1"; //можешь распарсить, мне пох)
     
 
@@ -75,16 +60,14 @@ public class MySerializer {
     public static String getText(String url) throws Exception {
         URL website = new URL(url);
         URLConnection connection = website.openConnection();
-        BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8));
-
+        connection.setConnectTimeout(5000);
+        connection.setReadTimeout(8000);
+        connection.setRequestProperty("User-Agent", "BedwarsBro/" + com.dimchig.bedwarsbro.Main.VERSION);
         StringBuilder response = new StringBuilder();
-        String inputLine;
-
-        while ((inputLine = in.readLine()) != null) 
-            response.append(inputLine);
-
-        in.close();
-
+        try (BufferedReader in = new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
+            String inputLine;
+            while ((inputLine = in.readLine()) != null) response.append(inputLine);
+        }
         return response.toString();
     }
 }

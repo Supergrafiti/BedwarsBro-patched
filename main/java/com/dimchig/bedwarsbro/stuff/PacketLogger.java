@@ -1,10 +1,6 @@
 package com.dimchig.bedwarsbro.stuff;
 
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
-
-import com.dimchig.bedwarsbro.ChatSender;
+import com.dimchig.bedwarsbro.ClientScheduler;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.init.Blocks;
@@ -75,19 +71,13 @@ public class PacketLogger {
 
 		for (int i = 0; i < windowIds.length; i++) {
 			final int index = i;
-			new Thread(new Runnable() {
+			ClientScheduler.schedule(new Runnable() {
 				@Override
 				public void run() {
-					try {
-						TimeUnit.MILLISECONDS.sleep(delay * index);
-						sendCustomClickWindowPacket(windowIds[index], slotIds[index], 0, clickModes[index],
-								new ItemStack(Blocks.acacia_fence), index + 10);
-						// ChatSender.addText("clicking &e&l" + index);
-					} catch (InterruptedException e) {
-						e.printStackTrace();
-					}
+					sendCustomClickWindowPacket(windowIds[index], slotIds[index], 0, clickModes[index],
+							new ItemStack(Blocks.acacia_fence), index + 10);
 				}
-			}).start();
+			}, delay * (long) index);
 		}
 	}
 }

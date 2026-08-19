@@ -45,15 +45,15 @@ public class CustomScoreboard {
 		mod_player_name = ChatSender.parseText(mod_player_name);
 
 		boolean isAdmin = Main.isPropSelfAdmin();
+		String creatorPrefix = Main.namePlateRenderer.getPrefixByName(mod_player_name);
 		sm.readScoreboard();
 		if (sm.getText("роватей") != null && sm.getText("мерт") != null) {
 			// hub scoreboard
 			if (isAdmin) {
 				sm.replaceText(servers, subscribe);
-				if (sm.getText("Донат") != null) {
-					sm.replaceText(sm.getText("Донат"), " Префикс &7▸ " + Main.getPropAuthorPrefix());
-				}
-
+			}
+			if (creatorPrefix.length() > 0 && sm.getText("Донат") != null) {
+				sm.replaceText(sm.getText("Донат"), " Префикс &7▸ " + creatorPrefix);
 			}
 
 			if (sm.getText("Ник") != null) {

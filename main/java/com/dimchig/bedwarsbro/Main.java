@@ -1,11 +1,14 @@
 package com.dimchig.bedwarsbro;
 
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiChat;
+import net.minecraft.command.ICommand;
 import net.minecraft.inventory.*;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.util.ChatComponentText;
 import net.minecraft.util.EnumChatFormatting;
 import net.minecraftforge.client.ClientCommandHandler;
+import net.minecraftforge.client.event.GuiOpenEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.common.config.ConfigCategory;
 import net.minecraftforge.common.config.Configuration;
@@ -20,9 +23,10 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 import net.minecraftforge.fml.common.gameevent.InputEvent.KeyInputEvent;
 
 import java.io.File;
-import java.lang.reflect.Field;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.Iterator;
+import java.util.Map;
 
 import com.dimchig.bedwarsbro.commands.CommandEnableESP;
 import com.dimchig.bedwarsbro.Main.CONFIG_MSG;
@@ -73,17 +77,21 @@ import com.dimchig.bedwarsbro.stuff.ShopManager;
 import com.dimchig.bedwarsbro.stuff.TNTJump;
 import com.dimchig.bedwarsbro.stuff.TakeMaxSlotBlocks;
 import com.dimchig.bedwarsbro.stuff.TrajectoryFireball;
-import com.dimchig.bedwarsbro.stuff.TrajectoryPearl;
+import com.dimchig.bedwarsbro.stuff.FlyingProjectileTrajectory;
+import com.dimchig.bedwarsbro.stuff.ProjectileTrajectoryPreview;
 import com.dimchig.bedwarsbro.stuff.ZeroDeathHandler;
 import com.dimchig.bedwarsbro.testing.AimHelper;
 import com.dimchig.bedwarsbro.testing.BowAimbot;
+import com.dimchig.bedwarsbro.supergrafiti.AutoEjection;
+import com.dimchig.bedwarsbro.supergrafiti.CorrectFireball;
+import com.dimchig.bedwarsbro.supergrafiti.Fast_jump;
 
 @Mod(modid = Main.MODID, name = Main.NAME, version = Main.VERSION, clientSideOnly = true, acceptedMinecraftVersions = Main.MCVERSIONS, guiFactory = "com.dimchig.bedwarsbro.gui.GuiFactory")
 public class Main {
     public static final String MODID = "bedwarsbro";
     public static final String NAME = "BedwarsBro";
-    public static final String VERSION = "2.6";
-    public static final String MCVERSIONS = "[1.8, 1.12.2]";
+    public static final String VERSION = "2.6.1-patch";
+    public static final String MCVERSIONS = "[1.8.9]";
     
     public static int ANTIMUT_DELAY = 1000 * 60; //1 minute
     
@@ -115,7 +123,6 @@ public class Main {
     public static AutoSprint autoSprint;
     public static BedwarsMeow bedwarsMeow;
     public static AutoWaterDrop autoWaterDrop;
-    private Field configChangedEventModIDField;
     public static CommandHintsFinderLookAtPlayer commandHintsFinderLookAtPlayer;
     public static CommandHintsFinderLookAt commandHintsFinderLookAt;
     public static CommandRainbowMessage commandRainbowMessage;
@@ -145,7 +152,7 @@ public class Main {
     public static BedAutoTool bedAutoTool;
     public static GuiCrosshairBlocks guiCrosshairBlocks;
     public static TakeMaxSlotBlocks takeMaxSlotBlocks;
-    public static TrajectoryPearl trajectoryPearl;
+    public static ProjectileTrajectoryPreview projectileTrajectoryPreview;
     public static TrajectoryFireball trajectoryFireball;
     public static FireballSpread fireballSpread;
     public static FreezeClutch freezeClutch;
@@ -154,20 +161,16 @@ public class Main {
     public static ZeroDeathHandler zeroDeathHandler;
     public static RotateBind rotateBind;
     public static FileNicknamesManager fileNicknamesManager;
+    public static AutoEjection autoeject;
+    public static CorrectFireball correctFireball;
+    public static Fast_jump fastJump;
+    public static FlyingProjectileTrajectory flyingProjectileTrajectory;
     
     private boolean state = false;
 
     public Main() {
     	String config_name = this.MODID + "_" + this.VERSION + "_CONFIG.cfg";
         File configFile = new File(Loader.instance().getConfigDir(), config_name);
-
-        try {
-            //More ugly workarounds to get minecraft 1.8 to work with the same jar
-            configChangedEventModIDField = ConfigChangedEvent.class.getDeclaredField("modID");
-            configChangedEventModIDField.setAccessible(true);
-        } catch (NoSuchFieldException e) {
-            throw new RuntimeException("Cannot find field", e);
-        }
 
         config = new Configuration(configFile);
         initConfig();
@@ -195,6 +198,7 @@ public class Main {
     	ENABLE_BETTER_CHAT_STATISTIC_PREFIX(47, "&eУлучшенный чат &7→ &fСтатистика в начале сообщения"),
     	SCOREBOARD_ENGLISH(55, "&eEnglish scoreboard &7(команды на англ.)"),
     	AUTO_SPRINT(3, "Авто &dСпринт &7(Вечный бег)"),
+	    	FAST_JUMP(104, "Убирает задержку между &6прыжками &fигрока"),
     	
     	MINIMAP(4, "&6Миникарта"),
     	MINIMAP_FRAME(90, "&6Миникарта &7→ &fРамка"),
@@ -249,6 +253,7 @@ public class Main {
     	ZERO_DEATH_HEALTH_TRESHOLD(77, "&aZero &cDeath &7→ &fМин уровень здоровья&c*"),
     	ZERO_DEATH_HEALTH_CHECK_NEARBY(79, "&aZero &cDeath &7→ &fМин уровень здоровья &7→ &aПроверять окружение&c*"),
     	ZERO_DEATH_WRITE_IN_CHAT(78, "&aZero &cDeath &7→ &fПисать в чат&c*"),
+    	AUTO_EJECTION(101, "&eAuto &2Eject &7→ &fВыбрасывает ресурсы когда падаешь в пустоту"),
     	
     	ROTATE_BIND_DEGREES(81, "&fБинд на &cрозворот &7→ &fУгол поворота&c*"),
     	ROTATE_BIND_SPEED(82, "&fБинд на &cрозворот &7→ &fСкорость поворота&c*"),
@@ -286,7 +291,9 @@ public class Main {
     	MAP_AUTO_SELECTER(48, "&fЛюбимые карты &7(только для &fLEGEND&7)"),
     	CROSSHAIR_BLOCKS_COUNT(64, "&fКоличество блоков рядом с прицелом"),
     	TAKE_BLOCKS_FROM_MAX_SLOT(65, "&fБрать блоки из максимального слота справа"),
-    	PEARL_PREDICTION(66, "&fТраектория эндер-перла"),    	
+	    	PROJECTILE_TRAJECTORY_PREVIEW(66, "&fПредпросмотр траектории снаряда"),
+	    	FLYING_PROJECTILE_TRAJECTORIES(103, "&fТраектории летящих снарядов"),
+    	CORRECT_FIREBALL(102, "&6Correct &eFireball &7→ &fНикогда не промахнетесь фаерболом"),
     	FIREBALL_PREDICTION(67, "&fТраектория &6фаербола&c*"),
     	FIREBALL_SPREAD(85, "&fРазброс &6фаербола&c*"),
     	FIREBALL_SPREAD_OFFSET_X(86, "&fРазброс &6фаербола&7→ &fСместить на пару пикселей право&c*"),
@@ -318,7 +325,29 @@ public class Main {
         	if (s.charAt(s.length() - 1) == '*') s = s.substring(0, s.length() - 3);
         	return s;
         }
-    };
+	    };
+
+	private static final String LEGACY_PEARL_TRAJECTORY_KEY = buildLegacyConfigKey(
+	        CONFIG_MSG.PROJECTILE_TRAJECTORY_PREVIEW.sort_idx, "&fТраектория эндер-перла");
+	private static final String LEGACY_ARROW_TRAJECTORY_KEY = buildLegacyConfigKey(
+	        CONFIG_MSG.FLYING_PROJECTILE_TRAJECTORIES.sort_idx, "&fТраектория стрел");
+
+	private static String buildLegacyConfigKey(int sortIndex, String legacyLabel) {
+		return ColorCodesManager.replaceColorCodesInString("&0" + (char) (57344 + sortIndex) + "&f" + legacyLabel);
+	}
+
+	private static boolean migrateLegacyBoolean(String newKey, String legacyKey, boolean fallback) {
+		ConfigCategory category = config.getCategory(Configuration.CATEGORY_CLIENT);
+		if (category.containsKey(newKey)) {
+			return category.get(newKey).getBoolean(fallback);
+		}
+		if (category.containsKey(legacyKey)) {
+			boolean value = category.get(legacyKey).getBoolean(fallback);
+			category.remove(legacyKey);
+			return value;
+		}
+		return fallback;
+	}
     
     public static String getConfigSettings() {
     	String text = "";
@@ -403,6 +432,7 @@ public class Main {
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.DANGER_ALERT_SOUND.text, true,                               ColorCodesManager.replaceColorCodesInString("&fБудет ли пищать мод"));
         
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.AUTO_SPRINT.text, true,                                      ColorCodesManager.replaceColorCodesInString("&fВечный Control &7(всегда бежишь &eбыстро&7, как нажать W 2 раза)"));
+        prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.FAST_JUMP.text, false,                                       ColorCodesManager.replaceColorCodesInString("&fУбирает задержку между прыжками."));
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.AUTO_WATER_DROP.text, false,                                  ColorCodesManager.replaceColorCodesInString("&fЕсли у тебя в слотах есть вода и ты падаешь с высоты, то мод клачнет за тебя"));
         
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.BEDWARS_MEOW.text, false,                                    ColorCodesManager.replaceColorCodesInString("&fЭто типо &eDexlandMeow&f, только намного лучше. После каждого кила, или сломаной кровати в чат будут писаться сообщения от тебя типо \"&aPlayer&f, ты лох!\"\n\n&f&lСвои сообщения можно добавить командой &e/meow"));        
@@ -412,6 +442,7 @@ public class Main {
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.BETTER_SHOP.text, true,                        ColorCodesManager.replaceColorCodesInString("&fВ магазине предметы, на которых нету ресов, будут невидимыми\n\n&b&lНапиши команду &e/bwbroshop &b&lдля детальной статистики своих покупок!"));
         
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.ZERO_DEATH.text, false,                        ColorCodesManager.replaceColorCodesInString("&fЕсли хочешь себе очень высокий &eK/D&f, то перед своей смертью ты можешь прописать &c/leave &fи &a/rejoin&f, тогда смерть не засчитается. Будет срабатывать АвтоLeave по одному из условий:\n &f1) Либо ты упал ниже, чем &aN &fблоков от высоты своей кровати\n &f2) &fЛибо если ты падаешь с смертельной высоты &7(это если ты ударишся об землю! &aЕсли снизу вода, или у тебя в руке вода, или активирован Автоватердроп, то не ливнешь&7)\n &f3) Либо у тебя <= указанного &aколичества здоровья&f &7(максимум 20) &7(также учитывается окружение, смотри опцию ниже)&f\n\n&cИногда может забагатся и не ливнуть тебя. Например когда тебя убили с силкой, и ни одно из условий не выполнилось. Советую НЕ МЕНЯТЬ значения ниже, так как я их подобрал оптимально. Если ты уверен можешь поменять. &c&lНЕ РАБОТАЕТ В ПАТИ, РАБОТАЕТ ТОЛЬКО В ИГРЕ!"));
+        prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.AUTO_EJECTION.text, false,                    ColorCodesManager.replaceColorCodesInString("&fАвтоматически выбрасывает железо, золото, алмазы и изумруды при падении в пустоту."));
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.ZERO_DEATH_HEIGHT_TRESHOLD.text, 10,                        ColorCodesManager.replaceColorCodesInString("&fУсловие если ты упал ниже, чем &aN &fблоков от высоты своей кровати\n\n&b&lПОСТАВЬ &c&l999 &b&lЧТОБ ИГНОРИРОВАТЬ УСЛОВИЕ"));
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.ZERO_DEATH_FALL_CHECK.text, true,                        ColorCodesManager.replaceColorCodesInString("&fУсловие если ты падаешь с смертельной высоты &7(это если ты ударишся об землю! &aЕсли снизу вода, или у тебя в руке вода, или включен Автоватердроп, то не ливнешь&7)&f\n\n&b&lПОСТАВЬ &c&lFALSE &b&lЧТОБ ИГНОРИРОВАТЬ УСЛОВИЕ\n\n&fБудет учитыватся твое здоровье. Тоесть если у тебя осталось пол хп, ты сможешь упасть только с 13 блоков не умерев. Рассчет по формуле &aN &7(max) = &a[твое хп] &e+ &c[высота падения] &e+ &b3.5 &e+ &d[уровень чара брони на защиту, тоже формула] &e+ &a[уровень эффекта прыгучести]&f. Если ты не знал, то твоя броня &cбез чаров &fникак не влияет на урон падения"));
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.ZERO_DEATH_HEALTH_TRESHOLD.text, 4f,                        ColorCodesManager.replaceColorCodesInString("&fУсловие если у тебя <= &7(меньше или равно) &fуказанного &aколичества здоровья&f &7(максимум 20)\n\n&b&lПОСТАВЬ &c&l999 &b&lЧТОБ ИГНОРИРОВАТЬ УСЛОВИЕ"));
@@ -452,7 +483,18 @@ public class Main {
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.CROSSHAIR_BLOCKS_COUNT.text, true,                        ColorCodesManager.replaceColorCodesInString("&fЕсли у тебя будет меньше 6 блоков в слоте, и ты будешь строиться, появится цифра над твоим прицелом. Это удобно, чтоб не отводить взгляд во время строительства"));
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.TAKE_BLOCKS_FROM_MAX_SLOT.text, false,                        ColorCodesManager.replaceColorCodesInString("&fЕсли у тебя будет в хотбаре больше 1 слота с блоками, будет выбираться слот как можно правее"));
         
-        prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.PEARL_PREDICTION.text, true,                        ColorCodesManager.replaceColorCodesInString("&fЕсли у тебя будет перл в руке, то будет показана &aзеленая &7(если попадаешь) &fили &cкрасная зона&f. Так же будет показано куда летит перл"));
+	        boolean previewDefault = migrateLegacyBoolean(CONFIG_MSG.PROJECTILE_TRAJECTORY_PREVIEW.text, LEGACY_PEARL_TRAJECTORY_KEY, true);
+	        prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.PROJECTILE_TRAJECTORY_PREVIEW.text, previewDefault, ColorCodesManager.replaceColorCodesInString(
+	                "&fПоказывает траекторию снаряда в руке: &bэндер-перла&f, стрелы при натяжении лука, снежка, яйца, splash-зелья и бутылочки опыта.\n"
+	                        + "&fУчитывает текущую скорость игрока при броске, гравитацию, воду, блоки и сущности.\n"
+	                        + "&aЗелёный &7— &fперл может безопасно приземлиться, либо снаряд столкнётся с блоком/сущностью.\n"
+	                        + "&cКрасный &7— &fбезопасной точки или столкновения не найдено."));
+	        boolean flyingDefault = migrateLegacyBoolean(CONFIG_MSG.FLYING_PROJECTILE_TRAJECTORIES.text, LEGACY_ARROW_TRAJECTORY_KEY, true);
+	        prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.FLYING_PROJECTILE_TRAJECTORIES.text, flyingDefault, ColorCodesManager.replaceColorCodesInString(
+	                "&fПоказывает дальнейшую траекторию уже летящих стрел, перлов, снежков, яиц, зелий, бутылочек опыта и TNT.\n"
+	                        + "&fИспользуется тот же расчёт, что и в предпросмотре: гравитация, вода, блоки и сущности.\n"
+	                        + "&aЗелёный &7— &fожидается столкновение; для перла — безопасная точка приземления. &cКрасный &7— &fнет."));
+	        prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.CORRECT_FIREBALL.text, false,                     ColorCodesManager.replaceColorCodesInString("&fКорректирует фаербол в направлении взгляда."));
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.FIREBALL_PREDICTION.text, true,                        ColorCodesManager.replaceColorCodesInString("&fЕсли будут лететь фаерболы, то будет показано куда он летит"));
         prop = config.get(Configuration.CATEGORY_CLIENT, CONFIG_MSG.FIREBALL_SPREAD.text, true,                        ColorCodesManager.replaceColorCodesInString("&fЕсли взять в руки фаербол, то будет на месте прицела 3 круга разных цветов:"
         		+ "\n &cКрасный &7- &fшанс попадания &c100%"
@@ -483,8 +525,8 @@ public class Main {
     
     private static long time_last_update = 0;
     @SubscribeEvent
-    public void onConfigChange(ConfigChangedEvent event) throws IllegalAccessException {
-        if(configChangedEventModIDField.get(event).equals(MODID)) {
+    public void onConfigChange(ConfigChangedEvent event) {
+        if(event != null && MODID.equals(event.modID)) {
         	saveConfig();
             updateAllBooleans();
             
@@ -517,10 +559,14 @@ public class Main {
         bedAutoTool.updateBooleans();
         guiCrosshairBlocks.updateBooleans();
         takeMaxSlotBlocks.updateBooleans();
-        trajectoryPearl.updateBooleans();
-        trajectoryFireball.updateBooleans();
+	        projectileTrajectoryPreview.updateBooleans();
+	        flyingProjectileTrajectory.updateBooleans();
+	        trajectoryFireball.updateBooleans();
         fireballSpread.updateBooleans();
         zeroDeathHandler.updateBooleans();
+        autoeject.updateBooleans();
+        correctFireball.updateBooleans();
+        fastJump.updateBooleans();
         rotateBind.updateBooleans();
         namePlateRenderer.updateBooleans();
         readCommandRainbowMessage();
@@ -533,8 +579,44 @@ public class Main {
     }
     
     static void readCommandRainbowMessage() {
-    	commandRainbowMessage = new CommandRainbowMessage(getConfigString(CONFIG_MSG.RAINBOW_MESSAGE_COMMAND));
-    	ClientCommandHandler.instance.registerCommand(commandRainbowMessage);
+	    	String commandName = getConfigString(CONFIG_MSG.RAINBOW_MESSAGE_COMMAND);
+	    	if (commandRainbowMessage == null) {
+	    		commandRainbowMessage = new CommandRainbowMessage(commandName);
+	    		ClientCommandHandler.instance.registerCommand(commandRainbowMessage);
+	    		return;
+	    	}
+
+	    	java.util.Iterator<java.util.Map.Entry<String, net.minecraft.command.ICommand>> iterator =
+	    			ClientCommandHandler.instance.getCommands().entrySet().iterator();
+	    	while (iterator.hasNext()) {
+	    		if (iterator.next().getValue() == commandRainbowMessage) iterator.remove();
+	    	}
+	    	commandRainbowMessage.setCommandText(commandName);
+	    	ClientCommandHandler.instance.getCommands().put(commandRainbowMessage.getCommandName(), commandRainbowMessage);
+    }
+
+    static int sanitizeClientCommandRegistry() {
+        int removed = 0;
+        Iterator<Map.Entry<String, ICommand>> iterator =
+                ClientCommandHandler.instance.getCommands().entrySet().iterator();
+
+        while (iterator.hasNext()) {
+            Map.Entry<String, ICommand> entry = iterator.next();
+            String name = entry.getKey();
+            if (name == null || name.trim().isEmpty() || entry.getValue() == null) {
+                iterator.remove();
+                removed++;
+            }
+        }
+
+        return removed;
+    }
+
+    @SubscribeEvent
+    public void onGuiOpen(GuiOpenEvent event) {
+        if (event.gui instanceof GuiChat) {
+            sanitizeClientCommandRegistry();
+        }
     }
 
     @Mod.EventHandler
@@ -558,9 +640,10 @@ public class Main {
          myTickEvent = new OnMyTickEvent();
          particleController = new ParticleController();
          particleTrail = new ParticleTrail();
-         bedwarsMeow = new BedwarsMeow();
-         autoSprint = new AutoSprint();
-         autoWaterDrop = new AutoWaterDrop();
+        bedwarsMeow = new BedwarsMeow();
+        autoSprint = new AutoSprint();
+        fastJump = new Fast_jump();
+        autoWaterDrop = new AutoWaterDrop();
          //autoEnderChest = new AutoEnderChest();
          shopManager = new ShopManager();
          loginHandler = new LoginHandler();
@@ -579,10 +662,13 @@ public class Main {
          bedAutoTool = new BedAutoTool(); 
          guiCrosshairBlocks = new GuiCrosshairBlocks(); 
          takeMaxSlotBlocks = new TakeMaxSlotBlocks(); 
-         trajectoryPearl = new TrajectoryPearl(); 
-         trajectoryFireball = new TrajectoryFireball(); 
+        projectileTrajectoryPreview = new ProjectileTrajectoryPreview();
+        flyingProjectileTrajectory = new FlyingProjectileTrajectory();
+        correctFireball = new CorrectFireball();
+        trajectoryFireball = new TrajectoryFireball();
          fireballSpread = new FireballSpread(); 
-         zeroDeathHandler = new ZeroDeathHandler(); 
+        zeroDeathHandler = new ZeroDeathHandler();
+        autoeject = new AutoEjection();
          rotateBind = new RotateBind(); 
          freezeClutch = new FreezeClutch(); 
          lightningLocator = new LightningLocator();
@@ -600,7 +686,8 @@ public class Main {
          MinecraftForge.EVENT_BUS.register(myTickEvent);
          MinecraftForge.EVENT_BUS.register(guiOnScreen);
          MinecraftForge.EVENT_BUS.register(bedwarsMeow);
-         MinecraftForge.EVENT_BUS.register(autoSprint);
+        MinecraftForge.EVENT_BUS.register(autoSprint);
+        MinecraftForge.EVENT_BUS.register(fastJump);
          MinecraftForge.EVENT_BUS.register(particlesAlwaysSharpness);
          MinecraftForge.EVENT_BUS.register(shopManager);
          MinecraftForge.EVENT_BUS.register(loginHandler);
@@ -612,12 +699,15 @@ public class Main {
          MinecraftForge.EVENT_BUS.register(bedAutoTool);
          MinecraftForge.EVENT_BUS.register(guiCrosshairBlocks);
          MinecraftForge.EVENT_BUS.register(takeMaxSlotBlocks);
-         MinecraftForge.EVENT_BUS.register(trajectoryPearl);
-         MinecraftForge.EVENT_BUS.register(trajectoryFireball);
+        MinecraftForge.EVENT_BUS.register(projectileTrajectoryPreview);
+        MinecraftForge.EVENT_BUS.register(flyingProjectileTrajectory);
+        MinecraftForge.EVENT_BUS.register(correctFireball);
+        MinecraftForge.EVENT_BUS.register(trajectoryFireball);
          MinecraftForge.EVENT_BUS.register(fireballSpread);
          MinecraftForge.EVENT_BUS.register(lightningLocator);
          MinecraftForge.EVENT_BUS.register(lobbyFly);
-         MinecraftForge.EVENT_BUS.register(zeroDeathHandler);
+        MinecraftForge.EVENT_BUS.register(zeroDeathHandler);
+        MinecraftForge.EVENT_BUS.register(autoeject);
          MinecraftForge.EVENT_BUS.register(rotateBind);
          
          
@@ -651,9 +741,10 @@ public class Main {
      	ClientCommandHandler.instance.registerCommand(new CommandModHelp(this, "/bedwarswbro"));
      	ClientCommandHandler.instance.registerCommand(new CommandModHelp(this, "/bro"));
      	
-     	readCommandRainbowMessage();
+      readCommandRainbowMessage();
+	    sanitizeClientCommandRegistry();
      	     	
-     	baseProps = new BaseProps();
+      	baseProps = new BaseProps();
      	baseProps.readProps();
      	baseProps.readMessages();
     	
@@ -680,6 +771,19 @@ public class Main {
 	public static String getPropModAuthor() { 
 		if (baseProps == null) return null;
     	return baseProps.getModAuthor(); 
+	}
+	public static String getPropPatchAuthor() {
+		if (baseProps == null) return null;
+		return baseProps.getPatchAuthor();
+	}
+	public static boolean isPropPatchAuthor(String playerName) {
+		return baseProps != null && baseProps.isPatchAuthor(playerName);
+	}
+	public static boolean isPropModAuthor(String playerName) {
+		return baseProps != null && baseProps.isModAuthor(playerName);
+	}
+	public static String getPropPatchAuthorPrefix() {
+		return "&c&l[&6&lСоздатель патча&c&l]&r ";
 	}
 	public static String getPropAuthorPrefix() { 
 		if (baseProps == null) return null;

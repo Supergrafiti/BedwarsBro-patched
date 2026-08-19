@@ -169,10 +169,6 @@ public class GuiPlayerFocus {
         if (this.isInvulnerableTimerActive && MyChatListener.IS_IN_GAME) {
         	Main.invulnerableTime.scan(world.playerEntities, pos, partialTicks, isInvulnerableTimerSoundsActive);
         }
-        
-        if (this.isInvulnerableTimerActive && MyChatListener.IS_IN_GAME) {
-        	Main.invulnerableTime.scan(world.playerEntities, pos, partialTicks, isInvulnerableTimerSoundsActive);
-        }
         //if (true) return;
         
         if (this.isNamePlateActive) {

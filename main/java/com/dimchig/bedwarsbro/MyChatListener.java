@@ -7,8 +7,6 @@ import java.util.Arrays;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -77,21 +75,30 @@ public class MyChatListener {
 
 	public static class GameRecovery {
 		public long time_started;
+		public long saved_at;
 		public BWBed game_bed;
 		public ArrayList<MyBed> minimap_beds;
 		public MyLightning last_lightning;
+		public ArrayList<String> player_names;
+		public boolean rejoin_requested;
 
 		public GameRecovery(long time_started, BWBed game_bed, ArrayList<MyBed> minimap_beds,
-				MyLightning last_lightning) {
+				MyLightning last_lightning, ArrayList<String> player_names) {
 			this.time_started = time_started;
+			this.saved_at = new Date().getTime();
 			this.game_bed = game_bed;
 			this.minimap_beds = minimap_beds;
 			this.last_lightning = last_lightning;
+			this.player_names = player_names;
+			this.rejoin_requested = false;
 		}
 	}
 
 	public static BWBed GAME_BED;
 	public static GameRecovery GAME_RECOVERY;
+	private static final long GAME_RECOVERY_MAX_AGE_MS = 10 * 60 * 1000L;
+	private static final long GAME_RECOVERY_VERIFICATION_DELAY_MS = 15 * 1000L;
+	private static boolean gameRecoveryResolved;
 	public static boolean removeNextMessage = false;
 
 	public static class ChatMessage {
@@ -532,7 +539,7 @@ public class MyChatListener {
 					for (int i = 0; i < chatMessage.elements.length; i++) {
 						String part = s.split(Pattern.quote(chatMessage.elements[i]))[0];
 						parts.add(part);
-						s = s.split(chatMessage.elements[i])[1];
+						s = s.split(Pattern.quote(chatMessage.elements[i]), 2)[1];
 						if (i == chatMessage.elements.length - 1)
 							parts.add(s);
 					}
@@ -593,22 +600,23 @@ public class MyChatListener {
 
 	@SubscribeEvent
 	public void onJoinServer(FMLNetworkEvent.ClientConnectedToServerEvent e) {
-		Main.updateAllBooleans();
-		new Timer().schedule(new TimerTask() {
+		ClientScheduler.schedule(new Runnable() {
 			@Override
 			public void run() {
+				Main.updateAllBooleans();
 				if (Minecraft.getMinecraft() == null || Minecraft.getMinecraft().ingameGUI == null
 						|| Minecraft.getMinecraft().ingameGUI.getChatGUI() == null)
 					return;
 				Minecraft.getMinecraft().ingameGUI.getChatGUI().clearChatMessages();
 			}
-		}, 200);
+		}, 200L);
 	}
 
 	int tick_count = 0;
 
 	@SubscribeEvent
 	public void playerTick(TickEvent.ClientTickEvent event) {
+		if (event.phase != TickEvent.Phase.END) return;
 		if (mc == null)
 			return;
 		if (mc.thePlayer == null)
@@ -628,6 +636,7 @@ public class MyChatListener {
 			return;
 		if (mc.thePlayer == null)
 			return;
+		if (e == null || e.message == null) return;
 
 		String str = e.message.getFormattedText();
 		ChatMessage instance = findChatMessage(str);
@@ -647,8 +656,7 @@ public class MyChatListener {
 				playSound(SOUND_PARTY_CHAT);
 			}
 
-			if (e.message.getUnformattedText().length() == 0)
-				e.message = null;
+			if (e.message.getUnformattedText().length() == 0) e.setCanceled(true);
 			return;
 		}
 
@@ -657,7 +665,7 @@ public class MyChatListener {
 
 	public static void sendDelayedGameStats() {
 
-		new Timer().schedule(new TimerTask() {
+		ClientScheduler.schedule(new Runnable() {
 			@Override
 			public void run() {
 				if (GAME_start_time > 0) {
@@ -684,7 +692,7 @@ public class MyChatListener {
 					anullateGameStats();
 				}
 			}
-		}, 500);
+		}, 500L);
 	}
 
 	static void anullateGameStats() {
@@ -699,8 +707,17 @@ public class MyChatListener {
 		GAME_total_kills = 0;
 		GAME_total_death = 0;
 		GAME_total_beds = 0;
+		gameRecoveryResolved = false;
 
 		Main.generatorTimers.setStartTimesOnGameStart();
+	}
+
+	public static void markRejoinIntent() {
+		long now = new Date().getTime();
+		if (GAME_RECOVERY == null || now - GAME_RECOVERY.saved_at > GAME_RECOVERY_MAX_AGE_MS) {
+			if (IS_IN_GAME) saveGameRecovery();
+		}
+		if (GAME_RECOVERY != null) GAME_RECOVERY.rejoin_requested = true;
 	}
 
 	public static void updateScoreboard() {
@@ -720,7 +737,7 @@ public class MyChatListener {
 	}
 
 	public static void deleteMessage(ClientChatReceivedEvent e) {
-		e.message = null;
+		e.setCanceled(true);
 	}
 
 	public static String formatChatPlayerName(IChatComponent message, String player_name, String player_color) {
@@ -729,6 +746,7 @@ public class MyChatListener {
 
 	public static String formatChatPlayerName(IChatComponent message, String player_name, String player_color,
 			boolean removeColor) {
+		if (player_name == null) return "";
 		player_name = player_name.trim();
 
 		if (player_name.contains(" ")) {
@@ -746,7 +764,7 @@ public class MyChatListener {
 		}
 
 		while (true) {
-			if (player_name.charAt(0) == '&') {
+			if (player_name.length() >= 2 && player_name.charAt(0) == '&') {
 				player_name = player_name.substring(2);
 			} else
 				break;
@@ -772,10 +790,12 @@ public class MyChatListener {
 	}
 
 	public static String getTeamBoldName(String team_name) {
+		if (team_name == null || team_name.length() < 2) return team_name == null ? "" : team_name;
 		return team_name.substring(0, 2) + "&l" + team_name.substring(2);
 	}
 
 	public static String getTeamColor(String team_name) {
+		if (team_name == null || team_name.length() < 2) return "&f";
 		return team_name.substring(0, 2);
 	}
 
@@ -851,8 +871,9 @@ public class MyChatListener {
 			return text;
 		// if (text.charAt(0) == '!') text = text.substring(1);
 
-		assert Minecraft.getMinecraft() == null || Minecraft.getMinecraft().thePlayer == null;
-		String player_name = Minecraft.getMinecraft().thePlayer.getName();
+		Minecraft minecraft = Minecraft.getMinecraft();
+		if (minecraft == null || minecraft.thePlayer == null) return text;
+		String player_name = minecraft.thePlayer.getName();
 		// text = text.replaceAll("(?i)" + Pattern.quote(player_name), "&e" +
 		// player_name + "&f");
 		if (ColorCodesManager.removeColorCodes(text).contains(player_name)) {
@@ -899,8 +920,9 @@ public class MyChatListener {
 	}
 
 	public static void playSound(String name, float volume) {
-		assert Minecraft.getMinecraft() == null || Minecraft.getMinecraft().thePlayer == null;
-		Minecraft.getMinecraft().thePlayer.playSound(name, volume, 1.0f);
+		Minecraft minecraft = Minecraft.getMinecraft();
+		if (minecraft == null || minecraft.thePlayer == null || name == null || name.isEmpty()) return;
+		minecraft.thePlayer.playSound(name, volume, 1.0f);
 	}
 
 	public static boolean isItFinalKill(String player_name) {
@@ -920,11 +942,17 @@ public class MyChatListener {
 	}
 
 	public static void saveGameRecovery() {
-		if (GAME_BED == null)
-			return; // not real save
-		// ChatSender.addText("&eSAVING");
+		if (GAME_BED == null) return;
+
+		long now = new Date().getTime();
+		if (GAME_RECOVERY != null) {
+			long previousSnapshotAge = now - GAME_RECOVERY.saved_at;
+			if ((GAME_RECOVERY.rejoin_requested && previousSnapshotAge < GAME_RECOVERY_MAX_AGE_MS)
+					|| previousSnapshotAge < GAME_RECOVERY_VERIFICATION_DELAY_MS) return;
+		}
+
 		GAME_RECOVERY = new GameRecovery(GAME_start_time, GAME_BED, Main.minimap.bedsFound,
-				Main.lightningLocator.last_lightning);
+				Main.lightningLocator.last_lightning, getCurrentGamePlayerNames());
 	}
 
 	public static void bedwarsGameStarted() {
@@ -954,12 +982,7 @@ public class MyChatListener {
 				// ChatSender.addText("&d===START GAME===");
 			}
 
-			if ((new Date().getTime() - GAME_start_time) > 5000) {
-				// after bed scanned
-				if (GAME_BED == null) {
-					recoverGame();
-				}
-			}
+			if ((new Date().getTime() - GAME_start_time) > 5000) recoverGame();
 		} else {
 			if (IS_IN_GAME == true) {
 				// ChatSender.addText("&d===Clear===");
@@ -975,14 +998,16 @@ public class MyChatListener {
 		IS_IN_GAME = false;
 		Main.minimap.clearGameBeds();
 		Main.lightningLocator.last_lightning = null;
+		if (Main.myTickEvent != null) Main.myTickEvent.clearWorldState();
 	}
 
 	public static void readPlayerBase() {
 		int delay = 2000; // to let players load
-		new Timer().schedule(new TimerTask() {
+		ClientScheduler.schedule(new Runnable() {
 			@Override
 			public void run() {
-				if (Minecraft.getMinecraft() == null || Minecraft.getMinecraft().thePlayer == null)
+				if (Minecraft.getMinecraft() == null || Minecraft.getMinecraft().thePlayer == null
+						|| Minecraft.getMinecraft().theWorld == null)
 					return;
 
 				Minecraft.getMinecraft().thePlayer.refreshDisplayName();
@@ -1302,7 +1327,7 @@ public class MyChatListener {
 
 	static void handleBedwarsMeowGameGreeting() {
 		// timer
-		new Timer().schedule(new TimerTask() {
+		ClientScheduler.schedule(new Runnable() {
 			@Override
 			public void run() {
 				String s = Main.bedwarsMeow.getNextMessage(MsgCase.GAME_START, "");
@@ -1310,7 +1335,7 @@ public class MyChatListener {
 					return;
 				addBedwarsMeowMessageToQuee(s, true);
 			}
-		}, 500);
+		}, 500L);
 	}
 
 	public static void handleReceivedMessage(ClientChatReceivedEvent e, ChatMessage chatMessage) {
@@ -1820,7 +1845,10 @@ public class MyChatListener {
 			if (name.contains(" "))
 				name = name.split(" ")[0].trim();
 
-			if (Main.isPropUserAdmin(vals[0])) {
+			if (Main.isPropPatchAuthor(vals[0])) {
+				playSound(SOUND_TEAM_DESTROYED);
+				str = "§r§c§l› §r§fСоздатель патча &c&lBedwars&f&lBro &f\"&e" + vals[0] + "&f\" зашел в лобби!";
+			} else if (Main.isPropModAuthor(vals[0])) {
 				playSound(SOUND_TEAM_DESTROYED);
 				str = "§r§c§l› §r§fСоздатель мода &c&lBedwars&f&lBro &f\"&e" + vals[0] + "&f\" зашел в лобби!";
 			} else {
@@ -2067,8 +2095,7 @@ public class MyChatListener {
 			playSound(SOUND_PARTY_CREATED);
 			break;
 		case CHAT_LOBBY_PARTY_NEW_LEADER:
-			assert Minecraft.getMinecraft() == null || Minecraft.getMinecraft().thePlayer == null;
-			if (vals[1].equals(Minecraft.getMinecraft().thePlayer.getName())) {
+			if (Minecraft.getMinecraft().thePlayer != null && vals[1].equals(Minecraft.getMinecraft().thePlayer.getName())) {
 				str = PREFIX_PARTY + "&aТеперь ты лидер пати!";
 			} else {
 				str = PREFIX_PARTY + "&fНовый лидер пати: &a&l" + vals[1];
@@ -2311,9 +2338,10 @@ public class MyChatListener {
 	}
 
 	public static String getHoverMessage(IChatComponent message) {
+		if (message == null || message.getSiblings() == null) return "";
 
 		for (IChatComponent m : message.getSiblings()) {
-			if (m.getSiblings() == null)
+			if (m == null || m.getSiblings() == null)
 				continue;
 			for (IChatComponent component : m.getSiblings()) {
 				if (component.getChatStyle() == null)
@@ -2342,18 +2370,99 @@ public class MyChatListener {
 		str += "            &fТебе нужно &a&lобновить мод&f, чтоб пользоваться им дальше\n\n";
 		str += "               &d&lНажми на сообщение &b&l(ссылка в описании)\n\n";
 		str += "                     &7Скачай мод, и положи его в папку\n";
-		str += "             &7%appdata%&8/&7Roaming&8/&7.minecraft&8/&7mods\n";
+		str += "             &7" + FileManager.getFile("mods").getAbsolutePath() + "\n";
 		str += "&8<===============================================>";
 		ChatSender.addLinkAndHoverText(str, "&eНажми&f, чтоб скачать новую версию мода", link);
 	}
 
-	public static void recoverGame() {
-		if (GAME_BED == null && GAME_RECOVERY != null && GAME_RECOVERY.game_bed != null) {
-			GAME_start_time = GAME_RECOVERY.time_started;
-			GAME_BED = GAME_RECOVERY.game_bed;
-			Main.minimap.bedsFound = GAME_RECOVERY.minimap_beds;
-			Main.lightningLocator.last_lightning = GAME_RECOVERY.last_lightning;
-			// ChatSender.addText("&d===RECOVERED GAME===");
+	private static ArrayList<String> getCurrentGamePlayerNames() {
+		ArrayList<String> names = new ArrayList<String>();
+		try {
+			Minecraft minecraft = Minecraft.getMinecraft();
+			String ownName = minecraft == null || minecraft.thePlayer == null ? "" : minecraft.thePlayer.getName();
+			for (CustomScoreboard.BedwarsTeam team : CustomScoreboard.readBedwarsGame()) {
+				for (CustomScoreboard.BedwarsPlayer player : team.players) {
+					if (player == null || player.name == null || player.name.isEmpty()
+							|| player.name.equalsIgnoreCase(ownName)) continue;
+					boolean alreadyAdded = false;
+					for (String existingName : names) {
+						if (existingName.equalsIgnoreCase(player.name)) {
+							alreadyAdded = true;
+							break;
+						}
+					}
+					if (!alreadyAdded) names.add(player.name);
+				}
+			}
+		} catch (Exception ignored) {
 		}
+		return names;
+	}
+
+	private static boolean hasPlayerFromSavedMatch(GameRecovery recovery) {
+		if (recovery == null || recovery.player_names == null || recovery.player_names.isEmpty()) return false;
+		ArrayList<String> currentPlayers = getCurrentGamePlayerNames();
+		for (String savedName : recovery.player_names) {
+			for (String currentName : currentPlayers) {
+				if (savedName.equalsIgnoreCase(currentName)) return true;
+			}
+		}
+		return false;
+	}
+
+	private static boolean restoreEstimatedGameTime() {
+		List<CustomScoreboard.BedwarsTeam> teams;
+		try {
+			teams = CustomScoreboard.readBedwarsGame();
+		} catch (Exception ignored) {
+			return false;
+		}
+		if (teams == null || teams.isEmpty()) return false;
+
+		int bedsAlive = 0;
+		int teamsWithoutBeds = 0;
+		for (CustomScoreboard.BedwarsTeam team : teams) {
+			if (team.state == TEAM_STATE.BED_ALIVE) bedsAlive++;
+			else if (team.state == TEAM_STATE.BED_BROKEN || team.state == TEAM_STATE.DESTROYED) teamsWithoutBeds++;
+		}
+
+		int estimatedSeconds = 0;
+		if (bedsAlive == 0 && teams.size() > 1) estimatedSeconds = 2400; // bed-destruction stage
+		else if (teamsWithoutBeds >= 2) estimatedSeconds = 900; // at least mid-game
+		else if (teamsWithoutBeds > 0) estimatedSeconds = 300; // first generator upgrade stage
+
+		if (estimatedSeconds > 0) {
+			long estimatedStartTime = new Date().getTime() - (estimatedSeconds + 1) * 1000L;
+			GAME_start_time = estimatedStartTime;
+			if (Main.generatorTimers != null) Main.generatorTimers.restoreGameStartTime(estimatedStartTime, true);
+		}
+		return true;
+	}
+
+	public static void recoverGame() {
+		if (gameRecoveryResolved) return;
+
+		long now = new Date().getTime();
+		GameRecovery recovery = GAME_RECOVERY;
+		if (recovery != null && now - recovery.saved_at <= GAME_RECOVERY_MAX_AGE_MS) {
+			boolean sameMatch = recovery.rejoin_requested || hasPlayerFromSavedMatch(recovery);
+			if (sameMatch) {
+				GAME_start_time = recovery.time_started;
+				if (Main.generatorTimers != null) Main.generatorTimers.restoreGameStartTime(recovery.time_started, false);
+				if (GAME_BED == null && recovery.game_bed != null) {
+					GAME_BED = recovery.game_bed;
+					Main.minimap.bedsFound = recovery.minimap_beds;
+					Main.lightningLocator.last_lightning = recovery.last_lightning;
+				}
+				GAME_RECOVERY = null;
+				gameRecoveryResolved = true;
+				return;
+			}
+
+			if (now - recovery.saved_at < GAME_RECOVERY_VERIFICATION_DELAY_MS) return;
+			GAME_RECOVERY = null;
+		}
+
+		if (restoreEstimatedGameTime()) gameRecoveryResolved = true;
 	}
 }

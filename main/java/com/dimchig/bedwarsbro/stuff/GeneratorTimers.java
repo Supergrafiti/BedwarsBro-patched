@@ -38,6 +38,7 @@ public class GeneratorTimers extends Gui {
 	static int time_emerald_buffer = time_emerald_max; 
 	
 	static long time_game_start = 0;
+	static boolean isGameTimeEstimated = false;
 	
 	static int corner_position = 2;
 	static boolean isAdvanced = false;
@@ -98,7 +99,7 @@ public class GeneratorTimers extends Gui {
 						final BlockPos minPos = new BlockPos(en.posX - 1.0, en.posY - 1.0, en.posZ - 1.0);
 	                    final BlockPos maxPos = new BlockPos(en.posX + 1.0, en.posY + 1.0, en.posZ + 1.0);
 	                    final AxisAlignedBB box = new AxisAlignedBB(minPos, maxPos);
-	                    List<EntityArmorStand> armorStands = mc.theWorld.getEntitiesWithinAABB((Class)EntityArmorStand.class, box);
+	                    List<EntityArmorStand> armorStands = mc.theWorld.getEntitiesWithinAABB(EntityArmorStand.class, box);
 	                    if (armorStands == null) continue;
 	                    for (EntityArmorStand en2: armorStands) {
 	                    	if (en2 == null || en2.getDisplayName() == null) continue;
@@ -147,6 +148,13 @@ public class GeneratorTimers extends Gui {
 		time_emerald_buffer = start_emerald_time;
 		
 		time_game_start = t;
+		isGameTimeEstimated = false;
+	}
+
+	public void restoreGameStartTime(long restoredStartTime, boolean estimated) {
+		if (restoredStartTime <= 0) return;
+		time_game_start = restoredStartTime;
+		isGameTimeEstimated = estimated;
 	}
 	
 	public void draw(int screen_width, int screen_height) {
@@ -181,7 +189,7 @@ public class GeneratorTimers extends Gui {
 			
 			int game_time = Math.max((int)((t - time_game_start) / 1000f) - 1, 0);
 			int seconds = game_time % 60;
-	        String text_gameTime = (game_time / 60) + ":" + (seconds >= 10 ? "" : "0") + seconds;
+	        String text_gameTime = (isGameTimeEstimated ? "~" : "") + (game_time / 60) + ":" + (seconds >= 10 ? "" : "0") + seconds;
 	        
 	        int total_width = mc.fontRendererObj.getStringWidth(text_gameTime) + padding + mc.fontRendererObj.getStringWidth(text_gameTime)/2;
 	 

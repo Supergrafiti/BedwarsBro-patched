@@ -9,6 +9,7 @@ import java.util.Map;
 import java.util.Map.Entry;
 
 import com.dimchig.bedwarsbro.ChatSender;
+import com.dimchig.bedwarsbro.ClientScheduler;
 import com.dimchig.bedwarsbro.Main;
 import com.dimchig.bedwarsbro.Main.CONFIG_MSG;
 import com.dimchig.bedwarsbro.stuff.BWItemsHandler.BWItemColor;
@@ -86,10 +87,10 @@ public class BWBed {
 		final int delay = Main.getConfigInt(CONFIG_MSG.BED_SCANNER_ANIMATION_DELAY);
 		
 		for (final DefenceLayer layer: this.defence) {
-			new java.util.Timer().schedule( 
-			        new java.util.TimerTask() {
+			ClientScheduler.schedule(new Runnable() {
 			            @Override
 			            public void run() {
+			            	if (Minecraft.getMinecraft().theWorld != world) return;
 			        			for (BlockPos pos: layer.arr) {
 			        				for (Pop p: pops) {
 			        					if (p.pos.getX() == pos.getX() && p.pos.getY() == pos.getY() && p.pos.getZ() == pos.getZ()) {
@@ -101,9 +102,7 @@ public class BWBed {
 				        			}
 			        			}
 			            }
-			        }, 
-			        delay * (layer.index + 1)
-			);
+			        }, delay * (layer.index + 1L));
 		}
 	}
 	

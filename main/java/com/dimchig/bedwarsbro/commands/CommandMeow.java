@@ -4,6 +4,7 @@ import java.io.IOException;
 import java.util.List;
 
 import com.dimchig.bedwarsbro.ChatSender;
+import com.dimchig.bedwarsbro.FileManager;
 import com.dimchig.bedwarsbro.Main;
 import com.dimchig.bedwarsbro.MyChatListener;
 import com.dimchig.bedwarsbro.Main.CONFIG_MSG;
@@ -54,7 +55,7 @@ public class CommandMeow extends CommandBase {
 		ChatSender.addText(prefix + "&fПомощь по моду &f(Нажимай на сообщения)&f:");
 		
 		try {
-			String path2file = Minecraft.getMinecraft().mcDataDir.getCanonicalPath() + "\\" + BedwarsMeow.filename;
+			String path2file = FileManager.getFile(BedwarsMeow.filename).getCanonicalPath();
 			try {
 				ChatSender.addHoverFileText("&7• &eДобавить/Изменить свои сообщения", "&eНажми&f, чтоб открыть &8" + path2file, path2file);
 			} catch (IOException e) {

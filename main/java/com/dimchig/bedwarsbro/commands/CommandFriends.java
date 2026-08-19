@@ -7,11 +7,10 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.Date;
 import java.util.List;
-import java.util.Timer;
-import java.util.TimerTask;
 import java.util.regex.Pattern;
 
 import com.dimchig.bedwarsbro.ChatSender;
+import com.dimchig.bedwarsbro.ClientScheduler;
 import com.dimchig.bedwarsbro.ColorCodesManager;
 import com.dimchig.bedwarsbro.FileManager;
 import com.dimchig.bedwarsbro.FileNicknamesManager;
@@ -82,16 +81,13 @@ public class CommandFriends extends CommandBase {
 
 		for (int i = 0; i < arr.size(); i++) {
 			final String name = arr.get(i).trim();
-			new Timer().schedule( 
-	    	        new TimerTask() {
+			ClientScheduler.schedule(new Runnable() {
 	    	            @Override
 	    	            public void run() {
 	    	            	ChatSender.addText(Main.chatListener.PREFIX_FRIENDS + "&fКидаю пати &e" + name + "...");
 	    	            	ChatSender.sendText("/party " + name);
 	    	            }
-	    	        }, 
-	    	        i * 500
-	    	);
+	    	        }, i * 500L);
 		}
 		ChatSender.addText(Main.chatListener.PREFIX_FRIENDS + "&aКидаю пати " + arr.size() + " игрок" + Main.chatListener.getNumberEnding(arr.size(), "у", "ам", "ам") + "...");
 	}
