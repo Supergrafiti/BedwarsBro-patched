@@ -11,8 +11,8 @@ import com.dimchig.bedwarsbro.Main.CONFIG_MSG;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.entity.EntityPlayerSP;
 import net.minecraft.entity.Entity;
+import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Items;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemBow;
@@ -28,10 +28,13 @@ import net.minecraftforge.fml.common.eventhandler.SubscribeEvent;
 
 public class ProjectileTrajectoryPreview {
     private static final int MAX_STEPS = 180;
+    private static final int MAX_ENEMY_AIM_PREVIEWS = 12;
+    private static final double DANGER_NEARBY_DISTANCE = 3.0;
     private static final double MIN_MOTION_SQ = 0.000001;
 
     private final Minecraft mc = Minecraft.getMinecraft();
     private boolean enabled;
+    private boolean showEnemyAimTrajectories;
 
     public ProjectileTrajectoryPreview() {
         updateBooleans();
@@ -39,6 +42,7 @@ public class ProjectileTrajectoryPreview {
 
     public void updateBooleans() {
         enabled = Main.getConfigBool(CONFIG_MSG.PROJECTILE_TRAJECTORY_PREVIEW);
+        showEnemyAimTrajectories = Main.getConfigBool(CONFIG_MSG.ENEMY_AIM_TRAJECTORIES);
     }
 
     @SubscribeEvent
@@ -48,14 +52,7 @@ public class ProjectileTrajectoryPreview {
         }
 
         Launch launch = getLaunch(mc.thePlayer);
-        if (launch == null) {
-            return;
-        }
-
-        Prediction prediction = trace(launch);
-        if (prediction.points.size() < 2) {
-            return;
-        }
+        Prediction prediction = launch == null ? null : trace(launch, mc.thePlayer);
 
         Vec3 camera = interpolate(mc.thePlayer, event.partialTicks);
         GL11.glPushMatrix();
@@ -71,10 +68,15 @@ public class ProjectileTrajectoryPreview {
             GL11.glDepthMask(false);
             GL11.glLineWidth(2.5f);
 
-            float red = prediction.valid ? 0.10f : 1.00f;
-            float green = prediction.valid ? 1.00f : 0.12f;
-            drawPath(prediction.points, red, green, 0.10f);
-            drawMarker(prediction, red, green, 0.10f);
+            if (prediction != null && prediction.points.size() >= 2) {
+                float red = prediction.valid ? 0.10f : 1.00f;
+                float green = prediction.valid ? 1.00f : 0.12f;
+                drawPath(prediction.points, red, green, 0.10f);
+                drawMarker(prediction, red, green, 0.10f);
+            }
+            if (showEnemyAimTrajectories) {
+                drawEnemyAimPreviews();
+            }
         } finally {
             GL11.glDepthMask(true);
             GL11.glPopAttrib();
@@ -82,7 +84,7 @@ public class ProjectileTrajectoryPreview {
         }
     }
 
-    private Launch getLaunch(EntityPlayerSP player) {
+    private Launch getLaunch(EntityPlayer player) {
         ItemStack stack = player.getCurrentEquippedItem();
         if (stack == null) {
             return null;
@@ -117,7 +119,7 @@ public class ProjectileTrajectoryPreview {
         return null;
     }
 
-    private Launch createLaunch(EntityPlayerSP player, double speed, double gravity, double airDrag,
+    private Launch createLaunch(EntityPlayer player, double speed, double gravity, double airDrag,
             double waterDrag, double verticalAngleOffset, double radius, boolean pearl, boolean inheritHorizontalMotion) {
         double yaw = Math.toRadians(player.rotationYaw);
         double pitch = Math.toRadians(player.rotationPitch);
@@ -142,7 +144,61 @@ public class ProjectileTrajectoryPreview {
                 directionZ / length * speed + inheritedMotionZ, gravity, airDrag, waterDrag, radius, pearl);
     }
 
-    private Prediction trace(Launch launch) {
+    /** Uses the same collision and drag model as the visible trajectory preview. */
+    public boolean isPlayerAimingAt(EntityPlayer player, Entity target) {
+        if (player == null || target == null || player.isDead || player == target) {
+            return false;
+        }
+        Launch launch = getEnemyLaunch(player);
+        if (launch == null) {
+            return false;
+        }
+        Prediction prediction = trace(launch, player);
+        if (prediction.entity == target) {
+            return true;
+        }
+
+        Vec3 targetPosition = new Vec3(target.posX, target.posY + target.getEyeHeight(), target.posZ);
+        for (int i = 1; i < prediction.points.size(); i++) {
+            if (distanceToSegment(targetPosition, prediction.points.get(i - 1), prediction.points.get(i))
+                    <= DANGER_NEARBY_DISTANCE) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private double distanceToSegment(Vec3 point, Vec3 start, Vec3 end) {
+        double segmentX = end.xCoord - start.xCoord;
+        double segmentY = end.yCoord - start.yCoord;
+        double segmentZ = end.zCoord - start.zCoord;
+        double segmentLengthSq = segmentX * segmentX + segmentY * segmentY + segmentZ * segmentZ;
+        if (segmentLengthSq < 0.000001) {
+            return point.distanceTo(start);
+        }
+        double projection = ((point.xCoord - start.xCoord) * segmentX + (point.yCoord - start.yCoord) * segmentY
+                + (point.zCoord - start.zCoord) * segmentZ) / segmentLengthSq;
+        projection = Math.max(0.0, Math.min(1.0, projection));
+        Vec3 closest = new Vec3(start.xCoord + segmentX * projection, start.yCoord + segmentY * projection,
+                start.zCoord + segmentZ * projection);
+        return point.distanceTo(closest);
+    }
+
+    private Launch getEnemyLaunch(EntityPlayer player) {
+        ItemStack stack = player.getCurrentEquippedItem();
+        if (stack == null) {
+            return null;
+        }
+        if (stack.getItem() instanceof ItemBow) {
+            return getLaunch(player);
+        }
+        if (stack.getItem() == Items.fire_charge) {
+            return createLaunch(player, 1.5, 0.0, 0.95, 0.80, 0.0, 0.25, false, false);
+        }
+        return null;
+    }
+
+    private Prediction trace(Launch launch, Entity ignoredEntity) {
         ArrayList<Vec3> points = new ArrayList<Vec3>();
         Vec3 current = launch.start;
         double motionX = launch.motionX;
@@ -152,7 +208,7 @@ public class ProjectileTrajectoryPreview {
 
         for (int step = 0; step < MAX_STEPS; step++) {
             Vec3 next = current.addVector(motionX, motionY, motionZ);
-            Impact impact = findImpact(current, next, launch.radius);
+            Impact impact = findImpact(current, next, launch.radius, ignoredEntity);
             if (impact != null) {
                 points.add(impact.position);
                 Vec3 landing = launch.pearl ? findSafePearlLanding(impact.position) : impact.position;
@@ -177,7 +233,7 @@ public class ProjectileTrajectoryPreview {
         return new Prediction(points, current, null, false, null);
     }
 
-    private Impact findImpact(Vec3 start, Vec3 end, double radius) {
+    private Impact findImpact(Vec3 start, Vec3 end, double radius, Entity ignoredEntity) {
         MovingObjectPosition blockHit = mc.theWorld.rayTraceBlocks(start, end, false, true, false);
         Impact closest = blockHit == null ? null : new Impact(blockHit.hitVec, null, start.distanceTo(blockHit.hitVec));
 
@@ -186,7 +242,7 @@ public class ProjectileTrajectoryPreview {
                 continue;
             }
             Entity entity = (Entity) object;
-            if (entity == mc.thePlayer || entity.isDead || !entity.canBeCollidedWith()) {
+            if (entity == ignoredEntity || entity.isDead || !entity.canBeCollidedWith()) {
                 continue;
             }
             MovingObjectPosition entityHit = entity.getEntityBoundingBox().expand(radius, radius, radius)
@@ -240,6 +296,41 @@ public class ProjectileTrajectoryPreview {
             GL11.glVertex3d(point.xCoord, point.yCoord, point.zCoord);
         }
         GL11.glEnd();
+    }
+
+    private void drawEnemyAimPreviews() {
+        int rendered = 0;
+        for (Object object : mc.theWorld.playerEntities) {
+            if (!(object instanceof EntityPlayer) || rendered >= MAX_ENEMY_AIM_PREVIEWS) {
+                continue;
+            }
+            EntityPlayer enemy = (EntityPlayer) object;
+            if (!isEnemy(enemy) || mc.thePlayer.getDistanceSqToEntity(enemy) > 128.0 * 128.0) {
+                continue;
+            }
+            Launch launch = getEnemyLaunch(enemy);
+            if (launch == null) {
+                continue;
+            }
+            Prediction prediction = trace(launch, enemy);
+            if (prediction.points.size() < 2) {
+                continue;
+            }
+
+            boolean hitsLocalPlayer = prediction.entity == mc.thePlayer;
+            float red = hitsLocalPlayer ? 1.0f : 0.95f;
+            float green = hitsLocalPlayer ? 0.10f : 0.55f;
+            drawPath(prediction.points, red, green, 0.10f);
+            drawMarker(prediction, red, green, 0.10f);
+            rendered++;
+        }
+    }
+
+    private boolean isEnemy(EntityPlayer player) {
+        if (player == mc.thePlayer || player.isDead) {
+            return false;
+        }
+        return mc.thePlayer.getTeam() == null || player.getTeam() == null || mc.thePlayer.getTeam() != player.getTeam();
     }
 
     private void drawMarker(Prediction prediction, float red, float green, float blue) {

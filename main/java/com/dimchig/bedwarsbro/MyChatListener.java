@@ -100,6 +100,8 @@ public class MyChatListener {
 	private static final long GAME_RECOVERY_VERIFICATION_DELAY_MS = 15 * 1000L;
 	private static boolean gameRecoveryResolved;
 	public static boolean removeNextMessage = false;
+	private static long gameStartChatBlockUntil;
+	private static boolean gameStartChatHeaderShown;
 
 	public static class ChatMessage {
 		public CHAT_MESSAGE type;
@@ -637,6 +639,7 @@ public class MyChatListener {
 		if (mc.thePlayer == null)
 			return;
 		if (e == null || e.message == null) return;
+		if (handleGameStartChatBlock(e)) return;
 
 		String str = e.message.getFormattedText();
 		ChatMessage instance = findChatMessage(str);
@@ -661,6 +664,56 @@ public class MyChatListener {
 		}
 
 		handleReceivedMessage(e, instance);
+	}
+
+	private static boolean handleGameStartChatBlock(ClientChatReceivedEvent event) {
+		if (!IS_MOD_ACTIVE || event == null || event.message == null) return false;
+		long now = System.currentTimeMillis();
+		if (now > gameStartChatBlockUntil) {
+			gameStartChatBlockUntil = 0L;
+			gameStartChatHeaderShown = false;
+		}
+
+		String plain = ColorCodesManager.removeColorCodes(event.message.getUnformattedText());
+		if (plain == null) plain = "";
+		plain = plain.trim();
+		boolean divider = isGameStartDivider(plain);
+		boolean title = plain.contains("КРОВАТНЫЕ ВОЙНЫ");
+		boolean startText = plain.contains("Защити свою кровать и сломай чужие кровати");
+
+		if (!IS_IN_GAME && gameStartChatBlockUntil == 0L && (divider || title || startText)) {
+			gameStartChatBlockUntil = now + 2500L;
+			showGameStartHeader();
+		}
+
+		if (gameStartChatBlockUntil == 0L || now > gameStartChatBlockUntil) return false;
+		if (!isGameStartChatLine(plain, divider, title, startText)) return false;
+		event.setCanceled(true);
+		return true;
+	}
+
+	private static boolean isGameStartDivider(String text) {
+		if (text.length() < 20) return false;
+		for (int i = 0; i < text.length(); i++) {
+			if (text.charAt(i) != '▬') return false;
+		}
+		return true;
+	}
+
+	private static boolean isGameStartChatLine(String text, boolean divider, boolean title, boolean startText) {
+		return divider || title || startText || text.length() == 0
+				|| text.contains("Покупай предметы и улучшения для своей команды")
+				|| text.contains("Железо, Золото, Алмазы и Изумруды")
+				|| text.contains("Победит только одна")
+				|| text.contains("Вы играете на");
+	}
+
+	private static void showGameStartHeader() {
+		if (gameStartChatHeaderShown) return;
+		gameStartChatHeaderShown = true;
+		ChatSender.addText("&8▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
+		ChatSender.addText("                  &c&lB&6&le&e&ld&a&lW&b&la&9&lr&d&ls");
+		ChatSender.addText("&8▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬");
 	}
 
 	public static void sendDelayedGameStats() {

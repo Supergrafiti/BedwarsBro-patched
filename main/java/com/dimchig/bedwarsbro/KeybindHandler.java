@@ -91,7 +91,8 @@ public class KeybindHandler {
     KeyBinding keyMCUseItem;
     KeyBinding keyTab;
     
-    public static String filename = "BedwarsBro_Keybindings_" + Main.VERSION + ".txt";
+    public static final String filename = "BedwarsBro_Keybindings.txt";
+    private static final String legacyFilename = "BedwarsBro_Keybindings_" + Main.VERSION + ".txt";
     
     public KeybindHandler(Main asInstance) {
     	mc = Minecraft.getMinecraft();
@@ -100,7 +101,15 @@ public class KeybindHandler {
     }
     
     void readKeys() {
+		migrateLegacyKeyFile();
 		readKeys(true);
+	}
+
+	private void migrateLegacyKeyFile() {
+		String current = FileManager.readFile(filename);
+		if (current != null && current.trim().length() > 0) return;
+		String legacy = FileManager.readFile(legacyFilename);
+		if (legacy != null && legacy.trim().length() > 0) FileManager.writeToFile(legacy.trim(), filename, false);
 	}
 
 	private void readKeys(boolean resetInvalidFile) {

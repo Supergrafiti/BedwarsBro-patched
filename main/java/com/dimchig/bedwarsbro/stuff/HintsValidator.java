@@ -8,6 +8,7 @@ import com.dimchig.bedwarsbro.Main.CONFIG_MSG;
 import net.minecraft.client.Minecraft;
 
 public class HintsValidator {
+
 	public static boolean isPasswordCorrect() {
 		if (Minecraft.getMinecraft() == null || Minecraft.getMinecraft().thePlayer == null) return true;
 		

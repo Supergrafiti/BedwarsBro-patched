@@ -2,6 +2,9 @@ package com.dimchig.bedwarsbro.stuff;
 
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.Set;
 
 import com.dimchig.bedwarsbro.ChatSender;
 import com.dimchig.bedwarsbro.CustomScoreboard;
@@ -15,34 +18,35 @@ import com.dimchig.bedwarsbro.stuff.HintsPlayerScanner.BWPlayer;
 
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.entity.EntityPlayerSP;
-import net.minecraft.util.MovingObjectPosition;
 import net.minecraft.util.Vec3;
 import net.minecraft.world.World;
 
 public class DangerAlert {
-	private static int danger_zone_radius = 5;
-	private static int max_ray_distance = 100;
 	private static long prev_sound_time = 0;
 	private static long sound_freq = 150;
 	private static long prev_message_time = 0;
 	private static long message_freq = 3000;
+	private static final int REQUIRED_AIM_SAMPLES = 2;
+	private final HashMap<Integer, Integer> aimConfirmations = new HashMap<Integer, Integer>();
 	
 	public void scan(ArrayList<BWPlayer> players, EntityPlayerSP mod_player) {
 		long t = new Date().getTime();
 		World world = Minecraft.getMinecraft().theWorld;
 		Main.playerFocus.clearLines();
+		Set<Integer> checkedPlayers = new HashSet<Integer>();
 		for (BWPlayer p: players) {
 			if (p.en.getName().equals(mod_player.getName())) continue;
 			if (mod_player.getTeam() == p.en.getTeam()) continue;
 			if (p.item_in_hand == null) continue;
 			if (p.item_in_hand.type == BWItemType.BOW || p.item_in_hand.type == BWItemType.FIREBALL) {
-				//trace 
-				MovingObjectPosition ray = null;
-				for (int i = 1; i < max_ray_distance; i++) {
-					ray = p.en.rayTrace(i, 1.0f);
-			    	if (ray == null) continue;
-		    		boolean isInDanger = isPlayerInDangerZone(mod_player, ray.hitVec.xCoord, ray.hitVec.yCoord, ray.hitVec.zCoord);
-		    		if (isInDanger) {
+				int entityId = p.en.getEntityId();
+				checkedPlayers.add(entityId);
+				boolean isInDanger = Main.projectileTrajectoryPreview != null
+						&& Main.projectileTrajectoryPreview.isPlayerAimingAt(p.en, mod_player);
+				int samples = isInDanger ? aimConfirmations.containsKey(entityId) ? aimConfirmations.get(entityId) + 1 : 1 : 0;
+				if (samples == 0) aimConfirmations.remove(entityId);
+				else aimConfirmations.put(entityId, samples);
+				if (samples >= REQUIRED_AIM_SAMPLES) {
 		    			
 		    			if (GuiPlayerFocus.STATE == true) {
 		    				Vec3 p1 = null;
@@ -66,17 +70,13 @@ public class DangerAlert {
 		    					ChatSender.addText(MyChatListener.PREFIX_DANGER_ALERT + "&fНа тебя целятся &6ФАЕРБОЛОМ");
 		    				}
 		    			}
-		    			break;
-		    		}
 				}
 	    		
 			}
 		}
+		for (Integer entityId : new ArrayList<Integer>(aimConfirmations.keySet())) {
+			if (!checkedPlayers.contains(entityId)) aimConfirmations.remove(entityId);
+		}
 	}
 	
-	boolean isPlayerInDangerZone(EntityPlayerSP mod_player, double x, double y, double z) {
-		double dist = Math.sqrt(Math.pow(mod_player.posX - x, 2) + Math.pow(mod_player.posY + mod_player.getEyeHeight() - y, 2) + Math.pow(mod_player.posZ - z, 2));
-		if (dist < danger_zone_radius) return true;
-		return false;
-	}
 }

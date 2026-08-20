@@ -117,12 +117,12 @@ public class GuiMinimap extends Gui {
 	
 	public static void updateSizes() {
 		try {
-			map_size = Main.getConfigInt(CONFIG_MSG.MINIMAP_SIZE);
+			map_size = Math.max(50, Math.min(500, Main.getConfigInt(CONFIG_MSG.MINIMAP_SIZE)));
 			
 			frame_border_size = (int)(map_size / MINIMAP_SCALING / 2) + 1;
 			
 			isFrameActive = Main.getConfigBool(CONFIG_MSG.MINIMAP_FRAME);
-			if (!isFrameActive) frame_border_size = -1;
+			if (!isFrameActive) frame_border_size = 0;
 			
 			ScaledResolution sr = new ScaledResolution(mc);
 	        int screen_width = sr.getScaledWidth();
@@ -765,6 +765,39 @@ public class GuiMinimap extends Gui {
 				GlStateManager.popMatrix();
 			}
 		}
+	}
+
+	public static int getTopX() {
+		return topX;
+	}
+
+	public static int getTopY() {
+		return topY;
+	}
+
+	public static int getFrameBorderSize() {
+		return Math.max(0, frame_border_size);
+	}
+
+	/** Saves the layout selected in the visual editor. */
+	public static void saveEditorLayout(int newTopX, int newTopY, int newMapSize) {
+		map_size = Math.max(50, Math.min(500, newMapSize));
+		frame_border_size = (int)(map_size / MINIMAP_SCALING / 2) + 1;
+		if (!isFrameActive) frame_border_size = 0;
+		int border = getFrameBorderSize();
+		ScaledResolution resolution = new ScaledResolution(mc);
+		int maxX = Math.max(border, resolution.getScaledWidth() - map_size - border);
+		int maxY = Math.max(border, resolution.getScaledHeight() - map_size - border);
+		topX = Math.max(border, Math.min(newTopX, maxX));
+		topY = Math.max(border, Math.min(newTopY, maxY));
+		botX = topX + map_size;
+		botY = topY + map_size;
+
+		// Store the position from the upper-left corner. This keeps it stable when the window is resized.
+		Main.clientConfig.get(CONFIG_MSG.MINIMAP_X.text).set(Integer.toString(topX - border));
+		Main.clientConfig.get(CONFIG_MSG.MINIMAP_Y.text).set(Integer.toString(topY - border));
+		Main.clientConfig.get(CONFIG_MSG.MINIMAP_SIZE.text).set(map_size);
+		Main.saveConfig();
 	}
 
 	private Pos setMarkerPosition(double x, double y, double z) {
